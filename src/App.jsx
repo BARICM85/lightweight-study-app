@@ -370,8 +370,8 @@ function LightweightChartWorkspace({
         textColor: '#e2e8f0',
         attributionLogo: false,
         panes: {
-          separatorColor: 'rgba(148,163,184,0.12)',
-          separatorHoverColor: 'rgba(148,163,184,0.18)',
+          separatorColor: 'rgba(148,163,184,0.28)',
+          separatorHoverColor: 'rgba(148,163,184,0.36)',
           enableResize: false,
         },
       },
@@ -388,6 +388,9 @@ function LightweightChartWorkspace({
         borderColor: 'rgba(148,163,184,0.12)',
         timeVisible: true,
         secondsVisible: false,
+        ticksVisible: true,
+        minimumHeight: 28,
+        tickMarkMaxCharacterLength: 12,
       },
       localization: {
         priceFormatter: (value) => formatPrice(value),
@@ -891,6 +894,13 @@ function App() {
           </div>
 
           <section className="chart-card">
+            <div className="pane-legend">
+              <span className="pane-chip">Price</span>
+              <span className="pane-chip">Volume</span>
+              {rsiVisible ? <span className="pane-chip">RSI 14</span> : null}
+              {macdVisible ? <span className="pane-chip">MACD</span> : null}
+              <span className="pane-note">Shared time axis across all panes</span>
+            </div>
             <LightweightChartWorkspace
               points={historyState.points}
               chartType={chartType}

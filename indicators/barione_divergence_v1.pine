@@ -1,0 +1,83 @@
+//@version=5
+indicator("barione divergence v1", overlay=true, max_lines_count=200, max_labels_count=200)
+
+barsBack = input.int(200, "Bars Back", minval=20)
+rsiPeriod = input.int(14, "RSI Period", minval=2)
+momentumPeriod = input.int(20, "Momentum Period", minval=1)
+pivotLeft = input.int(5, "Pivot Left", minval=1)
+pivotRight = input.int(5, "Pivot Right", minval=1)
+useRsiFilter = input.bool(true, "Use RSI 70/30 Filter")
+showLines = input.bool(true, "Draw Divergence Lines")
+showSignals = input.bool(true, "Plot Divergence Signals")
+
+rsiValue = ta.rsi(close, rsiPeriod)
+momentumValue = close - close[momentumPeriod]
+
+pricePivotHigh = ta.pivothigh(high, pivotLeft, pivotRight)
+pricePivotLow = ta.pivotlow(low, pivotLeft, pivotRight)
+
+pivotHighBar = bar_index - pivotRight
+pivotLowBar = bar_index - pivotRight
+
+var float prevHighPrice = na
+var float prevHighRsi = na
+var float prevHighMomentum = na
+var int prevHighBar = na
+
+var float prevLowPrice = na
+var float prevLowRsi = na
+var float prevLowMomentum = na
+var int prevLowBar = na
+
+bearishDiv = false
+bullishDiv = false
+
+if not na(pricePivotHigh)
+    currHighPrice = high[pivotRight]
+    currHighRsi = rsiValue[pivotRight]
+    currHighMomentum = momentumValue[pivotRight]
+    currHighBar = pivotHighBar
+
+    if not na(prevHighPrice)
+        inRange = (currHighBar - prevHighBar) <= barsBack
+        bearishDiv := currHighPrice > prevHighPrice and currHighRsi < prevHighRsi and currHighMomentum < prevHighMomentum and inRange
+        bearishDiv := useRsiFilter ? (bearishDiv and (currHighRsi > 70 or prevHighRsi > 70)) : bearishDiv
+
+        if bearishDiv and showLines
+            line.new(prevHighBar, prevHighPrice, currHighBar, currHighPrice, color=color.red, width=2)
+
+        if bearishDiv and showSignals
+            label.new(currHighBar, currHighPrice, "▼ Barione Bear", style=label.style_label_down, color=color.red, textcolor=color.white)
+
+    prevHighPrice := currHighPrice
+    prevHighRsi := currHighRsi
+    prevHighMomentum := currHighMomentum
+    prevHighBar := currHighBar
+
+if not na(pricePivotLow)
+    currLowPrice = low[pivotRight]
+    currLowRsi = rsiValue[pivotRight]
+    currLowMomentum = momentumValue[pivotRight]
+    currLowBar = pivotLowBar
+
+    if not na(prevLowPrice)
+        inRange = (currLowBar - prevLowBar) <= barsBack
+        bullishDiv := currLowPrice < prevLowPrice and currLowRsi > prevLowRsi and currLowMomentum > prevLowMomentum and inRange
+        bullishDiv := useRsiFilter ? (bullishDiv and (currLowRsi < 30 or prevLowRsi < 30)) : bullishDiv
+
+        if bullishDiv and showLines
+            line.new(prevLowBar, prevLowPrice, currLowBar, currLowPrice, color=color.lime, width=2)
+
+        if bullishDiv and showSignals
+            label.new(currLowBar, currLowPrice, "▲ Barione Bull", style=label.style_label_up, color=color.lime, textcolor=color.black)
+
+    prevLowPrice := currLowPrice
+    prevLowRsi := currLowRsi
+    prevLowMomentum := currLowMomentum
+    prevLowBar := currLowBar
+
+plotshape(showSignals and bearishDiv, title="Bearish Divergence", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+plotshape(showSignals and bullishDiv, title="Bullish Divergence", style=shape.triangleup, location=location.belowbar, color=color.lime, size=size.small)
+
+alertcondition(bearishDiv, title="Barione Bearish Divergence", message="barione divergence v1: Bearish divergence detected")
+alertcondition(bullishDiv, title="Barione Bullish Divergence", message="barione divergence v1: Bullish divergence detected")
