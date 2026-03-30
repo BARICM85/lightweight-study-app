@@ -156,11 +156,29 @@ function computeMacd(points, fast = 12, slow = 26, signalPeriod = 9) {
   return { macd, signal, histogram }
 }
 
+function computeVisiblePriceRange(points, zoomFactor = 1) {
+  if (!points.length) return null
+  const lows = points.map((point) => point.low).filter((value) => Number.isFinite(value) && value > 0)
+  const highs = points.map((point) => point.high).filter((value) => Number.isFinite(value) && value > 0)
+  if (!lows.length || !highs.length) return null
+  const min = Math.min(...lows)
+  const max = Math.max(...highs)
+  const span = Math.max(max - min, max * 0.015)
+  const midpoint = (max + min) / 2
+  const scaledSpan = span / Math.max(0.5, zoomFactor)
+  const padding = scaledSpan * 0.08
+  return {
+    from: Number(Math.max(0.01, midpoint - (scaledSpan / 2) - padding).toFixed(2)),
+    to: Number((midpoint + (scaledSpan / 2) + padding).toFixed(2)),
+  }
+}
+
 function LightweightChartWorkspace({
   points,
   chartType,
   macdVisible,
   rsiVisible,
+  priceZoom,
 }) {
   const priceRef = useRef(null)
   const volumeRef = useRef(null)
@@ -200,10 +218,38 @@ function LightweightChartWorkspace({
       handleScale: true,
     }
 
-    const priceChart = createChart(priceRef.current, { ...sharedOptions, height: 460 })
-    const volumeChart = createChart(volumeRef.current, { ...sharedOptions, height: 120 })
-    const rsiChart = createChart(rsiRef.current, { ...sharedOptions, height: rsiVisible ? 132 : 0 })
-    const macdChart = createChart(macdRef.current, { ...sharedOptions, height: macdVisible ? 150 : 0 })
+    const priceChart = createChart(priceRef.current, {
+      ...sharedOptions,
+      height: 460,
+      timeScale: {
+        ...sharedOptions.timeScale,
+        visible: false,
+      },
+    })
+    const volumeChart = createChart(volumeRef.current, {
+      ...sharedOptions,
+      height: 120,
+      timeScale: {
+        ...sharedOptions.timeScale,
+        visible: false,
+      },
+    })
+    const rsiChart = createChart(rsiRef.current, {
+      ...sharedOptions,
+      height: rsiVisible ? 132 : 0,
+      timeScale: {
+        ...sharedOptions.timeScale,
+        visible: false,
+      },
+    })
+    const macdChart = createChart(macdRef.current, {
+      ...sharedOptions,
+      height: macdVisible ? 150 : 0,
+      timeScale: {
+        ...sharedOptions.timeScale,
+        visible: true,
+      },
+    })
 
     const priceSeries = priceChart.addSeries(CandlestickSeries, {
       upColor: '#17c964',
@@ -218,14 +264,11 @@ function LightweightChartWorkspace({
       priceLineColor: '#9ca3af',
     })
 
-    const sma20 = priceChart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 2, priceLineVisible: false, lastValueVisible: false })
-    const sma50 = priceChart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2, priceLineVisible: false, lastValueVisible: false })
-    const sma200 = priceChart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 2, priceLineVisible: false, lastValueVisible: false })
-
     const volumeSeries = volumeChart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
       priceLineVisible: false,
       lastValueVisible: false,
+      priceScaleId: 'right',
     })
 
     const rsiSeries = rsiChart.addSeries(LineSeries, {
@@ -261,15 +304,17 @@ function LightweightChartWorkspace({
     }))
 
     priceSeries.setData(candleData)
-    sma20.setData(computeSma(candleData, 20))
-    sma50.setData(computeSma(candleData, 50))
-    sma200.setData(computeSma(candleData, 200))
 
     volumeSeries.setData(points.map((point) => ({
       time: point.time,
       value: point.volume,
-      color: point.close >= point.open ? 'rgba(34,197,94,0.55)' : 'rgba(239,68,68,0.55)',
+      color: point.close >= point.open ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)',
     })))
+    volumeChart.priceScale('right').applyOptions({
+      autoScale: true,
+      scaleMargins: { top: 0.12, bottom: 0 },
+      borderColor: 'rgba(148,163,184,0.12)',
+    })
 
     rsiSeries.setData(computeRsi(candleData, 14))
     const macd = computeMacd(candleData)
@@ -278,6 +323,23 @@ function LightweightChartWorkspace({
     histogramSeries.setData(macd.histogram)
 
     const latestRsi = computeRsi(candleData, 14)
+    const visibleRange = computeVisiblePriceRange(candleData, priceZoom)
+    if (visibleRange) {
+      priceChart.priceScale('right').applyOptions({
+        autoScale: false,
+        mode: 0,
+        scaleMargins: { top: 0.08, bottom: 0.08 },
+      })
+      priceSeries.applyOptions({
+        autoscaleInfoProvider: () => ({
+          priceRange: {
+            minValue: visibleRange.from,
+            maxValue: visibleRange.to,
+          },
+        }),
+      })
+    }
+
     rsiChart.priceScale('right').applyOptions({
       autoScale: false,
       mode: 0,
@@ -318,6 +380,12 @@ function LightweightChartWorkspace({
     }
 
     priceChart.timeScale().subscribeVisibleLogicalRangeChange(syncRange)
+    priceChart.timeScale().fitContent()
+
+    const initialRange = priceChart.timeScale().getVisibleLogicalRange()
+    if (initialRange) {
+      syncRange(initialRange)
+    }
 
     const resizeCharts = () => {
       const priceWidth = priceRef.current?.clientWidth || 0
@@ -328,6 +396,10 @@ function LightweightChartWorkspace({
       if (volumeWidth) volumeChart.applyOptions({ width: volumeWidth })
       if (rsiWidth) rsiChart.applyOptions({ width: rsiWidth, height: rsiVisible ? 132 : 0 })
       if (macdWidth) macdChart.applyOptions({ width: macdWidth, height: macdVisible ? 150 : 0 })
+      const syncedRange = priceChart.timeScale().getVisibleLogicalRange()
+      if (syncedRange) {
+        syncRange(syncedRange)
+      }
     }
 
     resizeCharts()
@@ -340,7 +412,7 @@ function LightweightChartWorkspace({
       rsiChart.remove()
       macdChart.remove()
     }
-  }, [chartType, macdVisible, points, rsiVisible])
+  }, [chartType, macdVisible, points, priceZoom, rsiVisible])
 
   return (
     <div className="lw-layout">
@@ -366,6 +438,7 @@ function App() {
   const [quoteState, setQuoteState] = useState({ price: 0, changePercent: 0, source: 'loading' })
   const [rsiVisible, setRsiVisible] = useState(true)
   const [macdVisible, setMacdVisible] = useState(true)
+  const [priceZoom, setPriceZoom] = useState(1)
 
   useEffect(() => {
     let active = true
@@ -559,6 +632,15 @@ function App() {
               <button type="button" className={`chip subtle ${macdVisible ? 'selected' : ''}`} onClick={() => setMacdVisible((value) => !value)}>
                 {macdVisible ? 'Hide MACD' : 'Show MACD'}
               </button>
+              <button type="button" className="chip subtle" onClick={() => setPriceZoom((value) => Math.min(4, Number((value + 0.25).toFixed(2))))}>
+                Y+
+              </button>
+              <button type="button" className="chip subtle" onClick={() => setPriceZoom((value) => Math.max(0.75, Number((value - 0.25).toFixed(2))))}>
+                Y-
+              </button>
+              <button type="button" className="chip subtle" onClick={() => setPriceZoom(1)}>
+                Reset Y
+              </button>
             </div>
           </div>
 
@@ -568,6 +650,7 @@ function App() {
               chartType={chartType}
               rsiVisible={rsiVisible}
               macdVisible={macdVisible}
+              priceZoom={priceZoom}
             />
           </section>
         </main>

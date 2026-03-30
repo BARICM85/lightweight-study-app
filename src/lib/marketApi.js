@@ -122,15 +122,37 @@ function resolveTimestamp(value) {
 function normalizeHistory(payload) {
   const points = Array.isArray(payload?.points) ? payload.points : Array.isArray(payload?.data) ? payload.data : []
   return points
-    .map((point) => ({
-      time: resolveTimestamp(point.timestamp ?? point.date ?? point.time),
-      open: Number(point.open),
-      high: Number(point.high),
-      low: Number(point.low),
-      close: Number(point.close),
-      volume: Number(point.volume || 0),
-    }))
-    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.open) && Number.isFinite(point.close))
+    .map((point) => {
+      const time = resolveTimestamp(point.timestamp ?? point.date ?? point.time)
+      const open = Number(point.open)
+      const close = Number(point.close)
+      const rawHigh = Number(point.high)
+      const rawLow = Number(point.low)
+      const highSeed = Number.isFinite(rawHigh) ? rawHigh : Math.max(open, close)
+      const lowSeed = Number.isFinite(rawLow) ? rawLow : Math.min(open, close)
+      const high = Math.max(highSeed, open, close)
+      const low = Math.min(lowSeed, open, close)
+      return {
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume: Number(point.volume || 0),
+      }
+    })
+    .filter((point) => (
+      Number.isFinite(point.time)
+      && Number.isFinite(point.open)
+      && Number.isFinite(point.high)
+      && Number.isFinite(point.low)
+      && Number.isFinite(point.close)
+      && point.open > 0
+      && point.high > 0
+      && point.low > 0
+      && point.close > 0
+      && point.high >= point.low
+    ))
 }
 
 function startOfWeek(timestampSeconds) {
