@@ -1176,10 +1176,14 @@ function App() {
   const [drawSoftness, setDrawSoftness] = useState(0.55)
   const [crosshairWidth, setCrosshairWidth] = useState(1)
   const [pickedBar, setPickedBar] = useState(null)
-  const rangeOptions = useMemo(
-    () => (interval === '1D' ? [...RANGE_OPTIONS.slice(0, -1), ...DAILY_ONLY_RANGE_OPTIONS, 'ALL'] : RANGE_OPTIONS),
-    [interval],
-  )
+  const [allowExtendedHistory, setAllowExtendedHistory] = useState(false)
+  const rangeOptions = useMemo(() => {
+    if (interval !== '1D') return RANGE_OPTIONS
+    const base = [...RANGE_OPTIONS.slice(0, -1)]
+    if (allowExtendedHistory) base.push(...DAILY_ONLY_RANGE_OPTIONS)
+    base.push('ALL')
+    return base
+  }, [allowExtendedHistory, interval])
 
   useEffect(() => {
     if (!initialUrlSymbol) return
@@ -1226,7 +1230,7 @@ function App() {
     const load = async () => {
       setHistoryState((current) => ({ ...current, error: '' }))
       const [history, quote, broker] = await Promise.all([
-        fetchMarketHistory(selectedSymbol.symbol, range, interval),
+        fetchMarketHistory(selectedSymbol.symbol, range, interval, { allowExtendedHistory }),
         fetchMarketQuote(selectedSymbol.symbol),
         fetchBrokerStatus(),
       ])
@@ -1242,7 +1246,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [interval, range, selectedSymbol.symbol])
+  }, [allowExtendedHistory, interval, range, selectedSymbol.symbol])
 
   useEffect(() => {
     if (interval === '1D') return
@@ -1250,6 +1254,13 @@ function App() {
       setRange('1Y')
     }
   }, [interval, range])
+
+  useEffect(() => {
+    if (allowExtendedHistory) return
+    if (DAILY_ONLY_RANGE_OPTIONS.includes(range)) {
+      setRange('1Y')
+    }
+  }, [allowExtendedHistory, range])
 
   const handleChartAction = useCallback(({ tool, time, price, candle }) => {
     if (tool === 'Pick') {
@@ -1466,9 +1477,9 @@ function App() {
                           ))}
                         </select>
                       </label>
-                        <label className="interval-select-wrap">
-                          <span>RG</span>
-                          <select value={range} onChange={(event) => setRange(event.target.value)} className="interval-select">
+                      <label className="interval-select-wrap">
+                        <span>RG</span>
+                        <select value={range} onChange={(event) => setRange(event.target.value)} className="interval-select">
                           {rangeOptions.map((item) => (
                               <option key={item} value={item}>
                                 {item}
@@ -1476,6 +1487,16 @@ function App() {
                           ))}
                         </select>
                       </label>
+                      {interval === '1D' ? (
+                        <label className="range-toggle">
+                          <input
+                            type="checkbox"
+                            checked={allowExtendedHistory}
+                            onChange={(event) => setAllowExtendedHistory(event.target.checked)}
+                          />
+                          <span>&gt;5Y</span>
+                        </label>
+                      ) : null}
                       <label className="interval-select-wrap">
                         <span>Type</span>
                         <select value={chartType} onChange={(event) => setChartType(event.target.value)} className="interval-select">

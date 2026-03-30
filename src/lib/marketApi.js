@@ -51,9 +51,12 @@ const INTERVAL_TO_API = {
   '1M': 'day',
 }
 
-function resolveHistoryRequestRange(range, interval) {
-  if (range !== 'ALL') return RANGE_TO_LOOKBACK[range] || 'ytd'
-  if (interval === '1D') return 'all'
+function resolveHistoryRequestRange(range, interval, allowExtendedHistory = false) {
+  if (range !== 'ALL') {
+    if (DAILY_ONLY_RANGE_OPTIONS.includes(range) && !allowExtendedHistory) return '5y'
+    return RANGE_TO_LOOKBACK[range] || 'ytd'
+  }
+  if (interval === '1D') return allowExtendedHistory ? 'all' : '5y'
   if (interval === '1W') return 'all'
   if (interval === '1M') return 'all'
   return '1y'
@@ -247,10 +250,11 @@ export async function fetchBrokerStatus() {
   }
 }
 
-export async function fetchMarketHistory(symbol, range = 'YTD', interval = '1D') {
+export async function fetchMarketHistory(symbol, range = 'YTD', interval = '1D', options = {}) {
+  const { allowExtendedHistory = false } = options
   try {
     const payload = await requestJson(
-      `/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(resolveHistoryRequestRange(range, interval))}&interval=${encodeURIComponent(INTERVAL_TO_API[interval] || 'day')}`,
+      `/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(resolveHistoryRequestRange(range, interval, allowExtendedHistory))}&interval=${encodeURIComponent(INTERVAL_TO_API[interval] || 'day')}`,
     )
     const points = aggregatePoints(applySessionFilter(normalizeHistory(payload), interval), interval)
     if (!points.length) throw new Error('No history points returned')
