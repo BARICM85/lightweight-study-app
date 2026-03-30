@@ -125,17 +125,17 @@ function latestSeriesValue(series) {
 
 function buildTopAxisTicks(points, logicalRange, tickCount = 5) {
   if (!points.length) return []
-  const fallbackIndexes = [0, Math.floor(points.length * 0.25), Math.floor(points.length * 0.5), Math.floor(points.length * 0.75), points.length - 1]
-  const indexes = logicalRange
-    ? Array.from({ length: tickCount }, (_, idx) => {
-      const ratio = tickCount === 1 ? 0 : idx / (tickCount - 1)
-      const rawIndex = logicalRange.from + ((logicalRange.to - logicalRange.from) * ratio)
-      return Math.max(0, Math.min(points.length - 1, Math.round(rawIndex)))
-    })
-    : fallbackIndexes
+  const range = logicalRange ?? { from: 0, to: points.length - 1 }
+  const span = Math.max(1, range.to - range.from)
+  const indexes = Array.from({ length: tickCount }, (_, idx) => {
+    const ratio = tickCount === 1 ? 0 : idx / (tickCount - 1)
+    const rawIndex = range.from + (span * ratio)
+    return Math.max(0, Math.min(points.length - 1, Math.round(rawIndex)))
+  })
   return [...new Set(indexes)].map((index) => ({
     index,
     label: formatAxisDate(points[index]?.time),
+    position: ((index - range.from) / span) * 100,
   }))
 }
 
@@ -721,6 +721,7 @@ function LightweightChartWorkspace({
         high: hoveredData.high,
         low: hoveredData.low,
         close: hoveredData.close,
+        x: param?.point?.x ?? null,
       })
     }
 
@@ -820,9 +821,15 @@ function App() {
   const sma50Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 50)), [historyState.points])
   const sma200Value = useMemo(() => latestSeriesValue(computeProgressiveSma(historyState.points, 200)), [historyState.points])
   const resolvedTopAxisTicks = useMemo(
-    () => (topAxisTicks.length ? topAxisTicks : buildTopAxisTicks(historyState.points, null)),
+    () => (topAxisTicks.length ? topAxisTicks : buildTopAxisTicks(historyState.points, { from: 0, to: historyState.points.length - 1 })),
     [historyState.points, topAxisTicks],
   )
+  const cursorAxisStyle = useMemo(() => {
+    if (!Number.isFinite(hoveredBar?.x)) return null
+    return {
+      left: `clamp(56px, ${hoveredBar.x}px, calc(100% - 56px))`,
+    }
+  }, [hoveredBar])
 
   return (
     <div className="app-shell">
@@ -989,12 +996,23 @@ function App() {
             </div>
           </div>
 
-          <section className="chart-card">
-            <div className="top-date-axis" aria-label="Top date axis">
-              {resolvedTopAxisTicks.map((tick) => (
-                <span key={`${tick.index}-${tick.label}`}>{tick.label}</span>
-              ))}
-            </div>
+            <section className="chart-card">
+              <div className="top-date-axis" aria-label="Top date axis">
+                {resolvedTopAxisTicks.map((tick) => (
+                  <span
+                    key={`${tick.index}-${tick.label}`}
+                    className="top-date-tick"
+                    style={{ left: `${tick.position}%` }}
+                  >
+                    {tick.label}
+                  </span>
+                ))}
+                {cursorAxisStyle ? (
+                  <span className="cursor-date-pill" style={cursorAxisStyle}>
+                    {formatChartDate(stats.time)}
+                  </span>
+                ) : null}
+              </div>
             <div className="pane-legend">
               <span className="pane-chip">Price</span>
               <span className="pane-chip">Volume</span>
