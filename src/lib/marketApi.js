@@ -10,6 +10,7 @@ export const DEFAULT_SYMBOL = {
 
 export const INTERVAL_OPTIONS = ['1m', '5m', '15m', '1H', '4H', '1D', '1W', '1M']
 export const RANGE_OPTIONS = ['1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', 'ALL']
+export const DAILY_ONLY_RANGE_OPTIONS = ['3Y', '6Y', '9Y', '12Y', '15Y', '18Y', '21Y']
 
 const FALLBACK_SYMBOLS = [
   DEFAULT_SYMBOL,
@@ -29,6 +30,13 @@ const RANGE_TO_LOOKBACK = {
   '6M': '6mo',
   YTD: 'ytd',
   '1Y': '1y',
+  '3Y': '3y',
+  '6Y': '6y',
+  '9Y': '9y',
+  '12Y': '12y',
+  '15Y': '15y',
+  '18Y': '18y',
+  '21Y': '21y',
   ALL: 'all',
 }
 

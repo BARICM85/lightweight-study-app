@@ -22,6 +22,7 @@ import {
   LineSeries,
 } from 'lightweight-charts'
 import {
+  DAILY_ONLY_RANGE_OPTIONS,
   DEFAULT_SYMBOL,
   INTERVAL_OPTIONS,
   RANGE_OPTIONS,
@@ -1175,6 +1176,10 @@ function App() {
   const [drawSoftness, setDrawSoftness] = useState(0.55)
   const [crosshairWidth, setCrosshairWidth] = useState(1)
   const [pickedBar, setPickedBar] = useState(null)
+  const rangeOptions = useMemo(
+    () => (interval === '1D' ? [...RANGE_OPTIONS.slice(0, -1), ...DAILY_ONLY_RANGE_OPTIONS, 'ALL'] : RANGE_OPTIONS),
+    [interval],
+  )
 
   useEffect(() => {
     if (!initialUrlSymbol) return
@@ -1238,6 +1243,13 @@ function App() {
       cancelled = true
     }
   }, [interval, range, selectedSymbol.symbol])
+
+  useEffect(() => {
+    if (interval === '1D') return
+    if (DAILY_ONLY_RANGE_OPTIONS.includes(range)) {
+      setRange('1Y')
+    }
+  }, [interval, range])
 
   const handleChartAction = useCallback(({ tool, time, price, candle }) => {
     if (tool === 'Pick') {
@@ -1454,13 +1466,13 @@ function App() {
                           ))}
                         </select>
                       </label>
-                      <label className="interval-select-wrap">
-                        <span>RG</span>
-                        <select value={range} onChange={(event) => setRange(event.target.value)} className="interval-select">
-                          {RANGE_OPTIONS.map((item) => (
-                            <option key={item} value={item}>
-                              {item}
-                            </option>
+                        <label className="interval-select-wrap">
+                          <span>RG</span>
+                          <select value={range} onChange={(event) => setRange(event.target.value)} className="interval-select">
+                          {rangeOptions.map((item) => (
+                              <option key={item} value={item}>
+                                {item}
+                              </option>
                           ))}
                         </select>
                       </label>
