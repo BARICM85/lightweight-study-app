@@ -428,8 +428,8 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
   const markers = []
   const priceSegments = []
   const rsiSegments = []
-  let previousHighPivot = null
-  let previousLowPivot = null
+  const highPivots = []
+  const lowPivots = []
 
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index]
@@ -444,42 +444,42 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
         oscillator: rsiValue,
         momentum: momentumValue,
       }
+      const bearishCandidate = [...highPivots]
+        .reverse()
+        .find((previousHighPivot) => {
+          if ((currentHighPivot.index - previousHighPivot.index) > barsBack) return false
+          const priceDiverged = currentHighPivot.price > previousHighPivot.price
+          const rsiDiverged = currentHighPivot.oscillator < previousHighPivot.oscillator
+          const rsiFilterPassed = !useRsiFilter || currentHighPivot.oscillator > 70 || previousHighPivot.oscillator > 70
+          return priceDiverged && rsiDiverged && rsiFilterPassed
+        })
 
-      if (previousHighPivot && (currentHighPivot.index - previousHighPivot.index) <= barsBack) {
-        const bearish = (
-          currentHighPivot.price > previousHighPivot.price
-          && currentHighPivot.oscillator < previousHighPivot.oscillator
-          && currentHighPivot.momentum < previousHighPivot.momentum
-          && (!useRsiFilter || currentHighPivot.oscillator > 70 || previousHighPivot.oscillator > 70)
-        )
-
-        if (bearish) {
-          const bearishColor = style.lineColor || '#ef4444'
-          markers.push({
-            time: currentHighPivot.time,
-            position: 'aboveBar',
-            shape: 'arrowDown',
-            color: bearishColor,
-            text: 'Bariyaone Bear',
-          })
-          priceSegments.push({
-            color: bearishColor,
-            points: [
-              { time: previousHighPivot.time, value: previousHighPivot.price },
-              { time: currentHighPivot.time, value: currentHighPivot.price },
-            ],
-          })
-          rsiSegments.push({
-            color: bearishColor,
-            points: [
-              { time: previousHighPivot.time, value: previousHighPivot.oscillator },
-              { time: currentHighPivot.time, value: currentHighPivot.oscillator },
-            ],
-          })
-        }
+      if (bearishCandidate) {
+        const bearishColor = style.lineColor || '#ef4444'
+        markers.push({
+          time: currentHighPivot.time,
+          position: 'aboveBar',
+          shape: 'arrowDown',
+          color: bearishColor,
+          text: 'Bariyaone Bear',
+        })
+        priceSegments.push({
+          color: bearishColor,
+          points: [
+            { time: bearishCandidate.time, value: bearishCandidate.price },
+            { time: currentHighPivot.time, value: currentHighPivot.price },
+          ],
+        })
+        rsiSegments.push({
+          color: bearishColor,
+          points: [
+            { time: bearishCandidate.time, value: bearishCandidate.oscillator },
+            { time: currentHighPivot.time, value: currentHighPivot.oscillator },
+          ],
+        })
       }
 
-      previousHighPivot = currentHighPivot
+      highPivots.push(currentHighPivot)
     }
 
     if (isPivotLow(points, index, pivotLeft, pivotRight) && Number.isFinite(rsiValue) && Number.isFinite(momentumValue)) {
@@ -490,42 +490,42 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
         oscillator: rsiValue,
         momentum: momentumValue,
       }
+      const bullishCandidate = [...lowPivots]
+        .reverse()
+        .find((previousLowPivot) => {
+          if ((currentLowPivot.index - previousLowPivot.index) > barsBack) return false
+          const priceDiverged = currentLowPivot.price < previousLowPivot.price
+          const rsiDiverged = currentLowPivot.oscillator > previousLowPivot.oscillator
+          const rsiFilterPassed = !useRsiFilter || currentLowPivot.oscillator < 30 || previousLowPivot.oscillator < 30
+          return priceDiverged && rsiDiverged && rsiFilterPassed
+        })
 
-      if (previousLowPivot && (currentLowPivot.index - previousLowPivot.index) <= barsBack) {
-        const bullish = (
-          currentLowPivot.price < previousLowPivot.price
-          && currentLowPivot.oscillator > previousLowPivot.oscillator
-          && currentLowPivot.momentum > previousLowPivot.momentum
-          && (!useRsiFilter || currentLowPivot.oscillator < 30 || previousLowPivot.oscillator < 30)
-        )
-
-        if (bullish) {
-          const bullishColor = style.bullLineColor || style.lineColor || '#22c55e'
-          markers.push({
-            time: currentLowPivot.time,
-            position: 'belowBar',
-            shape: 'arrowUp',
-            color: bullishColor,
-            text: 'Bariyaone Bull',
-          })
-          priceSegments.push({
-            color: bullishColor,
-            points: [
-              { time: previousLowPivot.time, value: previousLowPivot.price },
-              { time: currentLowPivot.time, value: currentLowPivot.price },
-            ],
-          })
-          rsiSegments.push({
-            color: bullishColor,
-            points: [
-              { time: previousLowPivot.time, value: previousLowPivot.oscillator },
-              { time: currentLowPivot.time, value: currentLowPivot.oscillator },
-            ],
-          })
-        }
+      if (bullishCandidate) {
+        const bullishColor = style.bullLineColor || style.lineColor || '#22c55e'
+        markers.push({
+          time: currentLowPivot.time,
+          position: 'belowBar',
+          shape: 'arrowUp',
+          color: bullishColor,
+          text: 'Bariyaone Bull',
+        })
+        priceSegments.push({
+          color: bullishColor,
+          points: [
+            { time: bullishCandidate.time, value: bullishCandidate.price },
+            { time: currentLowPivot.time, value: currentLowPivot.price },
+          ],
+        })
+        rsiSegments.push({
+          color: bullishColor,
+          points: [
+            { time: bullishCandidate.time, value: bullishCandidate.oscillator },
+            { time: currentLowPivot.time, value: currentLowPivot.oscillator },
+          ],
+        })
       }
 
-      previousLowPivot = currentLowPivot
+      lowPivots.push(currentLowPivot)
     }
   }
 
