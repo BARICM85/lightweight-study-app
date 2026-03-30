@@ -986,9 +986,17 @@ function LightweightChartWorkspace({
 }
 
 function App() {
-  const [selectedSymbol, setSelectedSymbol] = useState(DEFAULT_SYMBOL)
-  const [searchValue, setSearchValue] = useState(DEFAULT_SYMBOL.symbol)
-  const [suggestions, setSuggestions] = useState([DEFAULT_SYMBOL])
+  const initialUrlSymbol = useMemo(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('symbol')?.toUpperCase() || ''
+  }, [])
+  const [selectedSymbol, setSelectedSymbol] = useState(() => (
+    initialUrlSymbol
+      ? { ...DEFAULT_SYMBOL, symbol: initialUrlSymbol, name: initialUrlSymbol }
+      : DEFAULT_SYMBOL
+  ))
+  const [searchValue, setSearchValue] = useState(initialUrlSymbol || DEFAULT_SYMBOL.symbol)
+  const [suggestions, setSuggestions] = useState(initialUrlSymbol ? [] : [DEFAULT_SYMBOL])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [interval, setInterval] = useState('1D')
   const [range, setRange] = useState('YTD')
@@ -1016,6 +1024,32 @@ function App() {
   const [drawSoftness, setDrawSoftness] = useState(0.55)
   const [crosshairWidth, setCrosshairWidth] = useState(1)
   const [pickedBar, setPickedBar] = useState(null)
+
+  useEffect(() => {
+    if (!initialUrlSymbol) return
+    let cancelled = false
+
+    const syncSymbolFromUrl = async () => {
+      const results = await searchSymbols(initialUrlSymbol, 16)
+      if (cancelled) return
+      const exactMatch = results.find((item) => item.symbol?.toUpperCase() === initialUrlSymbol)
+      const resolved = exactMatch || {
+        ...DEFAULT_SYMBOL,
+        symbol: initialUrlSymbol,
+        name: initialUrlSymbol,
+        exchange: 'NSE',
+      }
+      setSelectedSymbol(resolved)
+      setSearchValue(resolved.symbol)
+      setSuggestions(results.length ? results : [resolved])
+    }
+
+    syncSymbolFromUrl()
+
+    return () => {
+      cancelled = true
+    }
+  }, [initialUrlSymbol])
 
   useEffect(() => {
     let active = true
