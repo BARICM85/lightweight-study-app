@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Bell,
   ChartCandlestick,
   Crosshair,
   Gauge,
+  Minus,
   PencilLine,
   Search,
-  Shapes,
-  TrendingUp,
+  Target,
   X,
 } from 'lucide-react'
 import {
@@ -29,13 +28,12 @@ import {
   searchSymbols,
 } from './lib/marketApi'
 
-const TOOLS = [
+const DRAW_TOOLS = [
   { label: 'Crosshair', icon: Crosshair },
+  { label: 'Pick', icon: Target },
   { label: 'Trend', icon: PencilLine },
-  { label: 'Ray', icon: TrendingUp },
-  { label: 'Horizontal', icon: Shapes },
-  { label: 'Price', icon: Gauge },
-  { label: 'Note', icon: Bell },
+  { label: 'H Line', icon: Minus },
+  { label: 'V Line', icon: Gauge },
 ]
 
 function formatPrice(value) {
@@ -82,6 +80,91 @@ function formatAxisDate(rawTime) {
   }).format(new Date(timestampSeconds * 1000))
 }
 
+function formatNoteTime(rawTime) {
+  const timestampSeconds = normalizeChartTime(rawTime)
+  if (!Number.isFinite(timestampSeconds)) return 'Note'
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+  }).format(new Date(timestampSeconds * 1000))
+}
+
+function withOpacity(hex, alpha = 0.55) {
+  const value = hex.replace('#', '')
+  if (value.length !== 6) return hex
+  const red = parseInt(value.slice(0, 2), 16)
+  const green = parseInt(value.slice(2, 4), 16)
+  const blue = parseInt(value.slice(4, 6), 16)
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
+
+function nextDrawingId(prefix) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function pointLineDistance(target, start, end) {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(target.x - start.x, target.y - start.y)
+  }
+  const t = Math.max(0, Math.min(1, (((target.x - start.x) * dx) + ((target.y - start.y) * dy)) / ((dx * dx) + (dy * dy))))
+  const projection = { x: start.x + (t * dx), y: start.y + (t * dy) }
+  return Math.hypot(target.x - projection.x, target.y - projection.y)
+}
+
+function findDrawingSelection({ time, price, points, trendLines, horizontalLines, verticalLines }) {
+  if (!points.length || !Number.isFinite(time) || !Number.isFinite(price)) return null
+  const minTime = points[0].time
+  const maxTime = points[points.length - 1].time
+  const lows = points.map((point) => point.low)
+  const highs = points.map((point) => point.high)
+  const minPrice = Math.min(...lows)
+  const maxPrice = Math.max(...highs)
+  const timeSpan = Math.max(1, maxTime - minTime)
+  const priceSpan = Math.max(1, maxPrice - minPrice)
+  const target = { x: (time - minTime) / timeSpan, y: (price - minPrice) / priceSpan }
+
+  for (const line of trendLines) {
+    const start = { x: (line.start.time - minTime) / timeSpan, y: (line.start.price - minPrice) / priceSpan }
+    const end = { x: (line.end.time - minTime) / timeSpan, y: (line.end.price - minPrice) / priceSpan }
+    if (pointLineDistance(target, start, end) <= 0.03) {
+      return { type: 'trend', id: line.id }
+    }
+  }
+
+  for (const line of horizontalLines) {
+    if (Math.abs((price - line.price) / priceSpan) <= 0.015) {
+      return { type: 'horizontal', id: line.id }
+    }
+  }
+
+  for (const line of verticalLines) {
+    if (Math.abs((time - line.time) / timeSpan) <= 0.015) {
+      return { type: 'vertical', id: line.id }
+    }
+  }
+
+  return null
+}
+
+function findNearestCandle(points, rawTime) {
+  const targetTime = normalizeChartTime(rawTime)
+  if (!points.length || !Number.isFinite(targetTime)) return null
+  let nearest = points[0]
+  let nearestDistance = Math.abs(points[0].time - targetTime)
+  for (let index = 1; index < points.length; index += 1) {
+    const candidate = points[index]
+    const distance = Math.abs(candidate.time - targetTime)
+    if (distance < nearestDistance) {
+      nearest = candidate
+      nearestDistance = distance
+    }
+  }
+  return nearest
+}
+
 function sourceLabel(source) {
   if (source === 'zerodha') return 'Zerodha live'
   if (source === 'yahoo') return 'Last trading day'
@@ -92,6 +175,22 @@ function sourceLabel(source) {
 function average(values) {
   if (!values.length) return 0
   return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function nearestSeriesValueAtTime(series, rawTime) {
+  const targetTime = normalizeChartTime(rawTime)
+  if (!series.length || !Number.isFinite(targetTime)) return null
+  let nearest = series[0]
+  let nearestDistance = Math.abs(series[0].time - targetTime)
+  for (let index = 1; index < series.length; index += 1) {
+    const candidate = series[index]
+    const distance = Math.abs(candidate.time - targetTime)
+    if (distance < nearestDistance) {
+      nearest = candidate
+      nearestDistance = distance
+    }
+  }
+  return nearest?.value ?? null
 }
 
 function computeSma(points, length) {
@@ -404,11 +503,19 @@ function LightweightChartWorkspace({
   macdVisible,
   rsiVisible,
   priceZoom,
+  crosshairWidth,
   divergenceVisible,
   onHoverChange,
   onAxisChange,
+  selectedTool,
+  trendLines,
+  horizontalLines,
+  verticalLines,
+  selectedDrawing,
+  onChartAction,
 }) {
   const chartRef = useRef(null)
+  const overlayRef = useRef(null)
 
   useEffect(() => {
     if (!chartRef.current) return undefined
@@ -425,8 +532,8 @@ function LightweightChartWorkspace({
         },
       },
       grid: {
-        vertLines: { color: 'rgba(148,163,184,0.07)' },
-        horzLines: { color: 'rgba(148,163,184,0.07)' },
+        vertLines: { color: 'rgba(74,222,128,0.09)' },
+        horzLines: { color: 'rgba(74,222,128,0.09)' },
       },
       rightPriceScale: {
         borderColor: 'rgba(148,163,184,0.12)',
@@ -435,7 +542,7 @@ function LightweightChartWorkspace({
       },
       timeScale: {
         borderColor: 'rgba(148,163,184,0.12)',
-        visible: false,
+        visible: true,
         timeVisible: true,
         secondsVisible: false,
         ticksVisible: true,
@@ -449,14 +556,14 @@ function LightweightChartWorkspace({
         mode: CrosshairMode.Normal,
         vertLine: {
           color: 'rgba(255,255,255,0.72)',
-          width: 1,
+          width: crosshairWidth,
           style: 2,
-          labelVisible: false,
+          labelVisible: true,
           labelBackgroundColor: '#f8fafc',
         },
         horzLine: {
           color: 'rgba(255,255,255,0.72)',
-          width: 1,
+          width: crosshairWidth,
           style: 2,
           labelBackgroundColor: '#f8fafc',
         },
@@ -475,7 +582,7 @@ function LightweightChartWorkspace({
     chart.applyOptions({
       crosshair: {
         vertLine: {
-          labelVisible: false,
+          labelVisible: true,
         },
       },
     })
@@ -497,22 +604,27 @@ function LightweightChartWorkspace({
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
+      crosshairMarkerVisible: false,
     }, 0)
     const sma20Series = chart.addSeries(LineSeries, {
       color: '#22c55e',
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
+      crosshairMarkerVisible: false,
     }, 0)
     const sma50Series = chart.addSeries(LineSeries, {
       color: '#3b82f6',
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
+      crosshairMarkerVisible: false,
     }, 0)
     const divergenceMarkers = createSeriesMarkers(priceSeries, [], {
       zOrder: 'aboveSeries',
     })
+    const customDrawingSeries = []
+    const customPriceLines = []
 
     const volumePaneIndex = 1
     let nextPaneIndex = 2
@@ -532,6 +644,7 @@ function LightweightChartWorkspace({
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       }, rsiPaneIndex)
       : null
 
@@ -541,6 +654,7 @@ function LightweightChartWorkspace({
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       }, macdPaneIndex)
       : null
     const signalLine = macdVisible
@@ -549,6 +663,7 @@ function LightweightChartWorkspace({
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       }, macdPaneIndex)
       : null
     const histogramSeries = macdVisible
@@ -692,6 +807,70 @@ function LightweightChartWorkspace({
       divergenceMarkers.setMarkers([])
     }
 
+    trendLines.forEach((lineDef) => {
+      const line = chart.addSeries(LineSeries, {
+        color: lineDef.color,
+        lineWidth: 2,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      }, 0)
+      line.setData([
+        { time: lineDef.start.time, value: lineDef.start.price },
+        { time: lineDef.end.time, value: lineDef.end.price },
+      ])
+      customDrawingSeries.push(line)
+    })
+
+    horizontalLines.forEach((lineDef) => {
+      const priceLine = priceSeries.createPriceLine({
+        price: lineDef.price,
+        color: lineDef.color,
+        lineWidth: selectedDrawing?.type === 'horizontal' && selectedDrawing?.id === lineDef.id ? lineDef.width + 1 : lineDef.width,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: lineDef.label,
+      })
+      customPriceLines.push(priceLine)
+    })
+
+    const chartLow = Math.min(...candleData.map((point) => point.low))
+    const chartHigh = Math.max(...candleData.map((point) => point.high))
+
+    verticalLines.forEach((lineDef) => {
+      const line = chart.addSeries(LineSeries, {
+        color: lineDef.color,
+        lineWidth: selectedDrawing?.type === 'vertical' && selectedDrawing?.id === lineDef.id ? lineDef.width + 1 : lineDef.width,
+        lineStyle: 2,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      }, 0)
+      line.setData([
+        { time: lineDef.time, value: chartLow },
+        { time: lineDef.time, value: chartHigh },
+      ])
+      customDrawingSeries.push(line)
+    })
+
+    const syncOverlayBoxes = () => {
+      if (!overlayRef.current) return
+      overlayRef.current.innerHTML = ''
+
+      verticalLines.forEach((lineDef) => {
+        const x = chart.timeScale().timeToCoordinate(lineDef.time)
+        if (!Number.isFinite(x)) return
+        const label = document.createElement('div')
+        label.className = 'vline-box'
+        label.style.left = `${x}px`
+        label.style.top = '8px'
+        label.style.borderColor = lineDef.color
+        label.style.color = lineDef.color
+        label.textContent = lineDef.label
+        overlayRef.current.appendChild(label)
+      })
+    }
+
     chart.timeScale().fitContent()
     chart.panes()[0]?.setStretchFactor(5)
     chart.panes()[volumePaneIndex]?.setStretchFactor(2)
@@ -701,26 +880,30 @@ function LightweightChartWorkspace({
     const resizeCharts = () => {
       const width = chartRef.current?.clientWidth || 0
       if (width) chart.applyOptions({ width, height: totalHeight })
+      syncOverlayBoxes()
     }
 
     const handleVisibleRangeChange = (logicalRange) => {
       onAxisChange?.(buildTopAxisTicks(points, logicalRange))
+      syncOverlayBoxes()
     }
 
     const handleCrosshairMove = (param) => {
       if (!onHoverChange) return
       const hoveredData = param?.seriesData?.get(priceSeries)
       const hoveredTime = normalizeChartTime(param?.time)
-      if (!hoveredData || hoveredTime == null) {
+      const fallbackCandle = hoveredData ? null : findNearestCandle(candleData, hoveredTime)
+      if ((!hoveredData && !fallbackCandle) || hoveredTime == null) {
         onHoverChange(null)
         return
       }
+      const candle = hoveredData ?? fallbackCandle
       onHoverChange({
         time: hoveredTime,
-        open: hoveredData.open,
-        high: hoveredData.high,
-        low: hoveredData.low,
-        close: hoveredData.close,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
         x: param?.point?.x ?? null,
       })
     }
@@ -728,26 +911,60 @@ function LightweightChartWorkspace({
     chart.subscribeCrosshairMove(handleCrosshairMove)
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange)
 
+    const handleClick = (param) => {
+      if (!onChartAction || !selectedTool || !param?.point) return
+      const time = normalizeChartTime(param.time)
+      const hoveredCandle = param?.seriesData?.get(priceSeries)
+      const fallbackCandle = findNearestCandle(candleData, time)
+      const candle = hoveredCandle ?? fallbackCandle
+      const rawPrice = priceSeries.coordinateToPrice(param.point.y)
+      const price = Number.isFinite(rawPrice) ? rawPrice : candle?.close
+      if (!Number.isFinite(time) || !Number.isFinite(price)) return
+      onChartAction({
+        tool: selectedTool,
+        time,
+        price,
+        candle: candle ? {
+          time: candle.time ?? time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+        } : null,
+      })
+    }
+
+    chart.subscribeClick(handleClick)
+    chartRef.current.style.cursor = selectedTool === 'Crosshair' ? 'default' : 'crosshair'
+
     resizeCharts()
     window.addEventListener('resize', resizeCharts)
     handleVisibleRangeChange(chart.timeScale().getVisibleLogicalRange())
+    syncOverlayBoxes()
 
     return () => {
       window.removeEventListener('resize', resizeCharts)
       chart.unsubscribeCrosshairMove(handleCrosshairMove)
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange)
-      onHoverChange?.(null)
-      onAxisChange?.([])
+      chart.unsubscribeClick(handleClick)
       divergenceMarkers.detach()
       priceDivergenceLines.forEach((series) => chart.removeSeries(series))
       rsiDivergenceLines.forEach((series) => chart.removeSeries(series))
+      customDrawingSeries.forEach((series) => chart.removeSeries(series))
+      customPriceLines.forEach((line) => priceSeries.removePriceLine(line))
+      if (chartRef.current) {
+        chartRef.current.style.cursor = 'default'
+      }
       chart.remove()
     }
-  }, [chartType, divergenceVisible, macdVisible, onAxisChange, onHoverChange, points, priceZoom, rsiVisible])
+  }, [chartType, crosshairWidth, divergenceVisible, horizontalLines, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, selectedTool, trendLines, verticalLines])
 
   return (
     <div className="lw-layout">
-      <div ref={chartRef} className="lw-pane lw-price-pane" />
+      <div className="lw-chart-shell">
+        <div ref={chartRef} className="lw-pane lw-price-pane" />
+        <div ref={overlayRef} className="chart-overlay-layer" />
+      </div>
     </div>
   )
 }
@@ -770,6 +987,18 @@ function App() {
   const [divergenceVisible, setDivergenceVisible] = useState(true)
   const [hoveredBar, setHoveredBar] = useState(null)
   const [topAxisTicks, setTopAxisTicks] = useState([])
+  const [trendColor, setTrendColor] = useState('#22c55e')
+  const [levelColor, setLevelColor] = useState('#f87171')
+  const [verticalColor, setVerticalColor] = useState('#38bdf8')
+  const [trendDraft, setTrendDraft] = useState(null)
+  const [trendLines, setTrendLines] = useState([])
+  const [horizontalLines, setHorizontalLines] = useState([])
+  const [verticalLines, setVerticalLines] = useState([])
+  const [selectedDrawing, setSelectedDrawing] = useState(null)
+  const [drawWidth, setDrawWidth] = useState(2)
+  const [drawSoftness, setDrawSoftness] = useState(0.55)
+  const [crosshairWidth, setCrosshairWidth] = useState(1)
+  const [pickedBar, setPickedBar] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -808,18 +1037,93 @@ function App() {
     }
   }, [interval, range, selectedSymbol.symbol])
 
+  const handleChartAction = useCallback(({ tool, time, price, candle }) => {
+    if (tool === 'Pick') {
+      const selection = findDrawingSelection({
+        time,
+        price,
+        points: historyState.points,
+        trendLines,
+        horizontalLines,
+        verticalLines,
+      })
+      if (selection) {
+        setSelectedDrawing(selection)
+        return
+      }
+      setSelectedDrawing(null)
+      if (candle) setPickedBar(candle)
+      return
+    }
+
+    if (tool === 'Trend') {
+      if (!trendDraft) {
+        setSelectedDrawing(null)
+        setTrendDraft({ time, price })
+        return
+      }
+      setTrendLines((current) => [
+        ...current,
+        {
+          id: nextDrawingId('trend'),
+          start: trendDraft,
+          end: { time, price },
+          color: withOpacity(trendColor, drawSoftness),
+          width: drawWidth,
+        },
+      ])
+      setTrendDraft(null)
+      return
+    }
+
+    if (tool === 'H Line') {
+      setSelectedDrawing(null)
+      setHorizontalLines((current) => [
+        ...current,
+        {
+          id: nextDrawingId('horizontal'),
+          price,
+          color: withOpacity(levelColor, drawSoftness),
+          width: drawWidth,
+          label: `H ${formatPrice(price)}`,
+        },
+      ])
+      return
+    }
+
+    if (tool === 'V Line') {
+      setSelectedDrawing(null)
+      setVerticalLines((current) => [
+        ...current,
+        {
+          id: nextDrawingId('vertical'),
+          time,
+          color: withOpacity(verticalColor, drawSoftness),
+          width: drawWidth,
+          label: formatChartDate(time),
+        },
+      ])
+      return
+    }
+
+  }, [drawSoftness, drawWidth, historyState.points, horizontalLines, levelColor, trendColor, trendDraft, trendLines, verticalColor, verticalLines])
+
   const lastBar = historyState.points[historyState.points.length - 1]
   const stats = useMemo(() => ({
-    open: hoveredBar?.open ?? lastBar?.open ?? quoteState.price ?? 0,
-    high: hoveredBar?.high ?? lastBar?.high ?? quoteState.price ?? 0,
-    low: hoveredBar?.low ?? lastBar?.low ?? quoteState.price ?? 0,
-    close: hoveredBar?.close ?? lastBar?.close ?? quoteState.price ?? 0,
+    open: hoveredBar?.open ?? pickedBar?.open ?? lastBar?.open ?? quoteState.price ?? 0,
+    high: hoveredBar?.high ?? pickedBar?.high ?? lastBar?.high ?? quoteState.price ?? 0,
+    low: hoveredBar?.low ?? pickedBar?.low ?? lastBar?.low ?? quoteState.price ?? 0,
+    close: hoveredBar?.close ?? pickedBar?.close ?? lastBar?.close ?? quoteState.price ?? 0,
     change: Number.isFinite(quoteState.changePercent) ? quoteState.changePercent : 0,
-    time: hoveredBar?.time ?? lastBar?.time ?? null,
-  }), [hoveredBar, lastBar, quoteState])
-  const sma20Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 20)), [historyState.points])
-  const sma50Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 50)), [historyState.points])
-  const sma200Value = useMemo(() => latestSeriesValue(computeProgressiveSma(historyState.points, 200)), [historyState.points])
+    time: hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null,
+  }), [hoveredBar, pickedBar, lastBar, quoteState])
+  const sma20SeriesData = useMemo(() => computeSma(historyState.points, 20), [historyState.points])
+  const sma50SeriesData = useMemo(() => computeSma(historyState.points, 50), [historyState.points])
+  const sma200SeriesData = useMemo(() => computeProgressiveSma(historyState.points, 200), [historyState.points])
+  const activeSeriesTime = hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null
+  const sma20Value = useMemo(() => nearestSeriesValueAtTime(sma20SeriesData, activeSeriesTime), [activeSeriesTime, sma20SeriesData])
+  const sma50Value = useMemo(() => nearestSeriesValueAtTime(sma50SeriesData, activeSeriesTime), [activeSeriesTime, sma50SeriesData])
+  const sma200Value = useMemo(() => nearestSeriesValueAtTime(sma200SeriesData, activeSeriesTime), [activeSeriesTime, sma200SeriesData])
   const resolvedTopAxisTicks = useMemo(
     () => (topAxisTicks.length ? topAxisTicks : buildTopAxisTicks(historyState.points, { from: 0, to: historyState.points.length - 1 })),
     [historyState.points, topAxisTicks],
@@ -830,6 +1134,16 @@ function App() {
       left: `clamp(56px, ${hoveredBar.x}px, calc(100% - 56px))`,
     }
   }, [hoveredBar])
+  const toolHint = useMemo(() => {
+    if (selectedTool === 'Trend' && trendDraft) {
+      return 'Trend start locked. Click a second candle to complete the line.'
+    }
+    if (selectedTool === 'Trend') return 'Trend mode: click one candle, then click another candle.'
+    if (selectedTool === 'H Line') return 'Horizontal line mode: click once to place a price line.'
+    if (selectedTool === 'V Line') return 'Vertical line mode: click once to place a date/time line.'
+    if (selectedTool === 'Pick') return 'Pick mode: click a candle to pin its OHLC values above.'
+    return 'Crosshair mode: move over candles to inspect price and date.'
+  }, [selectedTool, trendDraft])
 
   return (
     <div className="app-shell">
@@ -852,23 +1166,6 @@ function App() {
       </header>
 
       <section className="workspace">
-        <aside className="left-tools">
-          {TOOLS.map((tool) => {
-            const Icon = tool.icon
-            return (
-              <button
-                key={tool.label}
-                type="button"
-                className={`tool-btn ${selectedTool === tool.label ? 'active' : ''}`}
-                onClick={() => setSelectedTool(tool.label)}
-                title={tool.label}
-              >
-                <Icon size={18} />
-              </button>
-            )
-          })}
-        </aside>
-
         <main className="chart-panel">
           <div className="top-bar">
             <div className="search-box-wrap">
@@ -908,40 +1205,110 @@ function App() {
               ) : null}
             </div>
 
-            <div className="symbol-strip">
-              <strong>{selectedSymbol.symbol}</strong>
-              <span>{selectedSymbol.name}</span>
-              <span>{formatPrice(quoteState.price)} INR</span>
-              <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+            <div className="symbol-stack">
+              <div className="symbol-strip">
+                <strong>{selectedSymbol.symbol}</strong>
+                <span>{selectedSymbol.name}</span>
+                <span>{formatPrice(quoteState.price)} INR</span>
+                <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+              </div>
+              <div className="tool-inline-bar tool-inline-right">
+                <div className="tool-inline-group">
+                  {DRAW_TOOLS.map((tool) => {
+                    const Icon = tool.icon
+                    return (
+                      <button
+                        key={tool.label}
+                        type="button"
+                        className={`tool-inline-btn ${selectedTool === tool.label ? 'active' : ''}`}
+                        onClick={() => setSelectedTool(tool.label)}
+                        title={tool.label}
+                      >
+                        <Icon size={14} />
+                        <span>{tool.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="tool-inline-bar tool-inline-right tool-inline-secondary">
+                <div className="tool-inline-group tool-inline-colors">
+                  <label className="tool-color">
+                    <span>Trend</span>
+                    <input type="color" value={trendColor} onChange={(event) => setTrendColor(event.target.value)} />
+                  </label>
+                  <label className="tool-color">
+                    <span>H Line</span>
+                    <input type="color" value={levelColor} onChange={(event) => setLevelColor(event.target.value)} />
+                  </label>
+                  <label className="tool-color">
+                    <span>V Line</span>
+                    <input type="color" value={verticalColor} onChange={(event) => setVerticalColor(event.target.value)} />
+                  </label>
+                  <label className="tool-slider">
+                    <span>Width</span>
+                    <input type="range" min="1" max="5" step="1" value={drawWidth} onChange={(event) => setDrawWidth(Number(event.target.value))} />
+                  </label>
+                  <label className="tool-slider">
+                    <span>Soft</span>
+                    <input type="range" min="0.2" max="1" step="0.05" value={drawSoftness} onChange={(event) => setDrawSoftness(Number(event.target.value))} />
+                  </label>
+                  <label className="tool-slider">
+                    <span>Cursor</span>
+                    <input type="range" min="1" max="4" step="1" value={crosshairWidth} onChange={(event) => setCrosshairWidth(Number(event.target.value))} />
+                  </label>
+                </div>
+                <div className="tool-inline-group">
+                  {selectedDrawing ? (
+                    <button
+                      type="button"
+                      className="tool-inline-btn"
+                      onClick={() => {
+                        if (selectedDrawing.type === 'trend') {
+                          setTrendLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                        }
+                        if (selectedDrawing.type === 'horizontal') {
+                          setHorizontalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                        }
+                        if (selectedDrawing.type === 'vertical') {
+                          setVerticalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                        }
+                        setSelectedDrawing(null)
+                      }}
+                    >
+                      Delete selected
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="tool-inline-btn"
+                    onClick={() => {
+                      setTrendDraft(null)
+                      setTrendLines([])
+                      setHorizontalLines([])
+                      setVerticalLines([])
+                      setSelectedDrawing(null)
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-
-          <div className="stats-strip">
-            <span className="symbol-label">{selectedSymbol.symbol}</span>
-            <span className="date-chip">{formatChartDate(stats.time)}</span>
-            <span>O {formatPrice(stats.open)}</span>
-            <span>H {formatPrice(stats.high)}</span>
-            <span>L {formatPrice(stats.low)}</span>
-            <span>C {formatPrice(stats.close)}</span>
-            <span className="ma-chip ma20">SMA20 {formatMaybePrice(sma20Value)}</span>
-            <span className="ma-chip ma50">SMA50 {formatMaybePrice(sma50Value)}</span>
-            <span className="ma-chip ma200">SMA200 {formatMaybePrice(sma200Value)}</span>
-            <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
-            {historyState.error ? <span className="error-text">{historyState.error}</span> : null}
           </div>
 
           <div className="control-row">
             <div className="chip-row">
-              {INTERVAL_OPTIONS.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={`chip ${interval === item ? 'selected' : ''}`}
-                  onClick={() => setInterval(item)}
-                >
-                  {item}
-                </button>
-              ))}
+              <label className="interval-select-wrap">
+                <span>TF</span>
+                <select value={interval} onChange={(event) => setInterval(event.target.value)} className="interval-select">
+                  {INTERVAL_OPTIONS.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div className="chip-row">
               {RANGE_OPTIONS.map((item) => (
@@ -984,41 +1351,39 @@ function App() {
               <button type="button" className={`chip subtle ${divergenceVisible ? 'selected' : ''}`} onClick={() => setDivergenceVisible((value) => !value)}>
                 {divergenceVisible ? 'Hide Barione Div' : 'Show Barione Div'}
               </button>
-              <button type="button" className="chip subtle" onClick={() => setPriceZoom((value) => Math.min(4, Number((value + 0.25).toFixed(2))))}>
-                Y+
-              </button>
-              <button type="button" className="chip subtle" onClick={() => setPriceZoom((value) => Math.max(0.75, Number((value - 0.25).toFixed(2))))}>
-                Y-
-              </button>
               <button type="button" className="chip subtle" onClick={() => setPriceZoom(1)}>
                 Reset Y
               </button>
             </div>
           </div>
 
-            <section className="chart-card">
-              <div className="top-date-axis" aria-label="Top date axis">
-                {resolvedTopAxisTicks.map((tick) => (
-                  <span
-                    key={`${tick.index}-${tick.label}`}
-                    className="top-date-tick"
-                    style={{ left: `${tick.position}%` }}
-                  >
-                    {tick.label}
-                  </span>
-                ))}
-                {cursorAxisStyle ? (
-                  <span className="cursor-date-pill" style={cursorAxisStyle}>
-                    {formatChartDate(stats.time)}
-                  </span>
-                ) : null}
+          <section className="chart-card">
+            <div className="chart-overlay-header">
+              <div className="stats-strip floating-stats">
+                <span className="symbol-label">{selectedSymbol.symbol}</span>
+                <span className="date-chip">{formatChartDate(stats.time)}</span>
+                <span>O {formatPrice(stats.open)}</span>
+                <span>H {formatPrice(stats.high)}</span>
+                <span>L {formatPrice(stats.low)}</span>
+                <span>C {formatPrice(stats.close)}</span>
+                <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
               </div>
-            <div className="pane-legend">
-              <span className="pane-chip">Price</span>
-              <span className="pane-chip">Volume</span>
-              {rsiVisible ? <span className="pane-chip">RSI 14</span> : null}
-              {macdVisible ? <span className="pane-chip">MACD</span> : null}
-              <span className="pane-note">Shared time axis across all panes</span>
+              <div className="stats-strip floating-ma-row">
+                <span className="ma-inline ma20">S20 {formatMaybePrice(sma20Value)}</span>
+                <span className="ma-inline ma50">S50 {formatMaybePrice(sma50Value)}</span>
+                <span className="ma-inline ma200">S200 {formatMaybePrice(sma200Value)}</span>
+              </div>
+              <div className="pane-legend floating">
+                <span className="pane-chip">Price</span>
+                <span className="pane-chip">Volume</span>
+                {rsiVisible ? <span className="pane-chip">RSI 14</span> : null}
+                {macdVisible ? <span className="pane-chip">MACD</span> : null}
+              </div>
+              {cursorAxisStyle ? (
+                <div className="cursor-date-pill chart-cursor-pill" style={cursorAxisStyle}>
+                  {formatChartDate(stats.time)}
+                </div>
+              ) : null}
             </div>
             <LightweightChartWorkspace
               points={historyState.points}
@@ -1026,9 +1391,16 @@ function App() {
               rsiVisible={rsiVisible}
               macdVisible={macdVisible}
               priceZoom={priceZoom}
+              crosshairWidth={crosshairWidth}
               divergenceVisible={divergenceVisible}
               onHoverChange={setHoveredBar}
               onAxisChange={setTopAxisTicks}
+              selectedTool={selectedTool}
+              trendLines={trendLines}
+              horizontalLines={horizontalLines}
+              verticalLines={verticalLines}
+              selectedDrawing={selectedDrawing}
+              onChartAction={handleChartAction}
             />
           </section>
         </main>
