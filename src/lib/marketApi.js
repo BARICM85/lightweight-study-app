@@ -45,8 +45,8 @@ const INTERVAL_TO_API = {
 
 function resolveHistoryRequestRange(range, interval) {
   if (range !== 'ALL') return RANGE_TO_LOOKBACK[range] || 'ytd'
-  if (interval === '1D') return '5y'
-  if (interval === '1W') return '10y'
+  if (interval === '1D') return 'all'
+  if (interval === '1W') return 'all'
   if (interval === '1M') return 'all'
   return '1y'
 }

@@ -430,7 +430,7 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
   const rsiSegments = []
   const highPivots = []
   const lowPivots = []
-  const minimumSignalGap = Math.max(18, (pivotLeft + pivotRight) * 2)
+  const minimumSignalGap = Math.max(10, pivotLeft + pivotRight + 2)
   let lastBearishSignalIndex = -Infinity
   let lastBullishSignalIndex = -Infinity
   let lastBearishAnchorIndex = -Infinity
@@ -462,7 +462,7 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
       if (
         bearishCandidate
         && (currentHighPivot.index - lastBearishSignalIndex) >= minimumSignalGap
-        && (bearishCandidate.index - lastBearishAnchorIndex) >= Math.max(8, pivotLeft + pivotRight)
+        && (bearishCandidate.index - lastBearishAnchorIndex) >= Math.max(4, pivotLeft)
       ) {
         const bearishColor = style.lineColor || '#ef4444'
         markers.push({
@@ -514,7 +514,7 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
       if (
         bullishCandidate
         && (currentLowPivot.index - lastBullishSignalIndex) >= minimumSignalGap
-        && (bullishCandidate.index - lastBullishAnchorIndex) >= Math.max(8, pivotLeft + pivotRight)
+        && (bullishCandidate.index - lastBullishAnchorIndex) >= Math.max(4, pivotLeft)
       ) {
         const bullishColor = style.bullLineColor || style.lineColor || '#22c55e'
         markers.push({
@@ -606,6 +606,7 @@ function LightweightChartWorkspace({
   onAxisChange,
   selectedTool,
   trendLines,
+  trendDraft,
   horizontalLines,
   verticalLines,
   selectedDrawing,
@@ -615,6 +616,7 @@ function LightweightChartWorkspace({
   const overlayRef = useRef(null)
   const visibleLogicalRangeRef = useRef(null)
   const selectedToolRef = useRef(selectedTool)
+  const trendDraftRef = useRef(trendDraft)
 
   useEffect(() => {
     selectedToolRef.current = selectedTool
@@ -622,6 +624,10 @@ function LightweightChartWorkspace({
       chartRef.current.style.cursor = selectedTool === 'Crosshair' ? 'default' : 'crosshair'
     }
   }, [selectedTool])
+
+  useEffect(() => {
+    trendDraftRef.current = trendDraft
+  }, [trendDraft])
 
   useEffect(() => {
     if (!chartRef.current) return undefined
@@ -739,6 +745,14 @@ function LightweightChartWorkspace({
     })
     const customDrawingSeries = []
     const customPriceLines = []
+    const previewTrendSeries = chart.addSeries(LineSeries, {
+      color: withOpacity('#22c55e', 0.65),
+      lineWidth: Math.max(1, drawWidth),
+      lineStyle: 2,
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      priceLineVisible: false,
+    }, 0)
 
     let nextPaneIndex = 1
     const volumePaneIndex = volumeVisible ? nextPaneIndex++ : null
@@ -1019,6 +1033,25 @@ function LightweightChartWorkspace({
       const hoveredData = param?.seriesData?.get(priceSeries)
       const hoveredTime = normalizeChartTime(param?.time)
       const fallbackCandle = hoveredData ? null : findNearestCandle(candleData, hoveredTime)
+      const rawPreviewPrice = Number.isFinite(param?.point?.y) ? priceSeries.coordinateToPrice(param.point.y) : NaN
+      const previewPrice = Number.isFinite(rawPreviewPrice) ? rawPreviewPrice : (hoveredData?.close ?? fallbackCandle?.close ?? NaN)
+      if (
+        selectedToolRef.current === 'Trend'
+        && trendDraftRef.current
+        && Number.isFinite(hoveredTime)
+        && Number.isFinite(previewPrice)
+      ) {
+        previewTrendSeries.applyOptions({
+          color: withOpacity(trendColor, Math.min(0.9, drawSoftness + 0.15)),
+          lineWidth: Math.max(1, drawWidth),
+        })
+        previewTrendSeries.setData([
+          { time: trendDraftRef.current.time, value: trendDraftRef.current.price },
+          { time: hoveredTime, value: previewPrice },
+        ])
+      } else {
+        previewTrendSeries.setData([])
+      }
       if ((!hoveredData && !fallbackCandle) || hoveredTime == null) {
         onHoverChange(null)
         return
@@ -1078,13 +1111,14 @@ function LightweightChartWorkspace({
       rsiDivergenceLines.forEach((series) => chart.removeSeries(series))
       customDrawingSeries.forEach((series) => chart.removeSeries(series))
       customPriceLines.forEach((line) => priceSeries.removePriceLine(line))
+      chart.removeSeries(previewTrendSeries)
       visibleLogicalRangeRef.current = chart.timeScale().getVisibleLogicalRange()
       if (chartRef.current) {
         chartRef.current.style.cursor = 'default'
       }
       chart.remove()
     }
-  }, [bariyaoneConfig, bariyaoneVisible, chartType, crosshairWidth, horizontalLines, interval, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, trendLines, verticalLines, volumeVisible])
+  }, [bariyaoneConfig, bariyaoneVisible, chartType, crosshairWidth, drawSoftness, drawWidth, horizontalLines, interval, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, trendColor, trendDraft, trendLines, verticalLines, volumeVisible])
 
   return (
     <div className="lw-layout">
@@ -1566,9 +1600,9 @@ function App() {
                 {bariyaoneStatusText ? <div className="indicator-status-line">{bariyaoneStatusText}</div> : null}
               </div>
             </div>
-            <LightweightChartWorkspace
-              points={historyState.points}
-              chartType={chartType}
+              <LightweightChartWorkspace
+                points={historyState.points}
+                chartType={chartType}
               volumeVisible={volumeVisible}
               rsiVisible={rsiVisible}
               macdVisible={macdVisible}
@@ -1578,11 +1612,12 @@ function App() {
               bariyaoneConfig={bariyaoneConfig}
               interval={interval}
               onHoverChange={setHoveredBar}
-              onAxisChange={setTopAxisTicks}
-              selectedTool={selectedTool}
-              trendLines={trendLines}
-              horizontalLines={horizontalLines}
-              verticalLines={verticalLines}
+                onAxisChange={setTopAxisTicks}
+                selectedTool={selectedTool}
+                trendLines={trendLines}
+                trendDraft={trendDraft}
+                horizontalLines={horizontalLines}
+                verticalLines={verticalLines}
               selectedDrawing={selectedDrawing}
               onChartAction={handleChartAction}
             />
