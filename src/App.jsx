@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChartCandlestick,
   Crosshair,
+  Eye,
+  EyeOff,
   Gauge,
   Minus,
   PencilLine,
@@ -500,6 +502,7 @@ function computeVisiblePriceRange(points, zoomFactor = 1) {
 function LightweightChartWorkspace({
   points,
   chartType,
+  volumeVisible,
   macdVisible,
   rsiVisible,
   priceZoom,
@@ -572,7 +575,7 @@ function LightweightChartWorkspace({
       handleScale: true,
     }
 
-    const totalHeight = 360 + 88 + (rsiVisible ? 96 : 0) + (macdVisible ? 108 : 0) + 20
+    const totalHeight = 360 + (volumeVisible ? 88 : 0) + (rsiVisible ? 96 : 0) + (macdVisible ? 108 : 0) + 20
 
     const chart = createChart(chartRef.current, {
       ...sharedOptions,
@@ -587,17 +590,25 @@ function LightweightChartWorkspace({
       },
     })
 
+    const isLineChart = chartType === 'line'
     const priceSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#17c964',
-      downColor: '#ef4444',
-      borderVisible: chartType !== 'stroke',
-      wickUpColor: '#17c964',
-      wickDownColor: '#ef4444',
-      borderUpColor: '#17c964',
-      borderDownColor: '#ef4444',
+      upColor: isLineChart ? 'rgba(0,0,0,0)' : '#17c964',
+      downColor: isLineChart ? 'rgba(0,0,0,0)' : '#ef4444',
+      borderVisible: !isLineChart && chartType !== 'stroke',
+      wickUpColor: isLineChart ? 'rgba(0,0,0,0)' : '#17c964',
+      wickDownColor: isLineChart ? 'rgba(0,0,0,0)' : '#ef4444',
+      borderUpColor: isLineChart ? 'rgba(0,0,0,0)' : '#17c964',
+      borderDownColor: isLineChart ? 'rgba(0,0,0,0)' : '#ef4444',
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineColor: '#9ca3af',
+    }, 0)
+    const closeLineSeries = chart.addSeries(LineSeries, {
+      color: '#60a5fa',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
     }, 0)
     const sma200Series = chart.addSeries(LineSeries, {
       color: '#ef4444',
@@ -626,17 +637,19 @@ function LightweightChartWorkspace({
     const customDrawingSeries = []
     const customPriceLines = []
 
-    const volumePaneIndex = 1
-    let nextPaneIndex = 2
+    let nextPaneIndex = 1
+    const volumePaneIndex = volumeVisible ? nextPaneIndex++ : null
     const rsiPaneIndex = rsiVisible ? nextPaneIndex++ : null
     const macdPaneIndex = macdVisible ? nextPaneIndex++ : null
 
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'volume' },
-      priceLineVisible: false,
-      lastValueVisible: false,
-      priceScaleId: 'right',
-    }, volumePaneIndex)
+    const volumeSeries = volumeVisible && volumePaneIndex != null
+      ? chart.addSeries(HistogramSeries, {
+        priceFormat: { type: 'volume' },
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceScaleId: 'right',
+      }, volumePaneIndex)
+      : null
 
     const rsiSeries = rsiVisible
       ? chart.addSeries(LineSeries, {
@@ -682,21 +695,24 @@ function LightweightChartWorkspace({
     }))
 
     priceSeries.setData(candleData)
+    closeLineSeries.setData(isLineChart ? candleData.map((point) => ({ time: point.time, value: point.close })) : [])
     sma20Series.setData(computeSma(candleData, 20))
     sma50Series.setData(computeSma(candleData, 50))
     sma200Series.setData(computeProgressiveSma(candleData, 200))
 
-    volumeSeries.setData(points.map((point) => ({
-      time: point.time,
-      value: point.volume,
-      color: point.close >= point.open ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)',
-    })))
-    chart.priceScale('right', volumePaneIndex).applyOptions({
-      autoScale: true,
-      scaleMargins: { top: 0.12, bottom: 0 },
-      borderColor: 'rgba(148,163,184,0.12)',
-      minimumWidth: 82,
-    })
+    if (volumeSeries && volumePaneIndex != null) {
+      volumeSeries.setData(points.map((point) => ({
+        time: point.time,
+        value: point.volume,
+        color: point.close >= point.open ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)',
+      })))
+      chart.priceScale('right', volumePaneIndex).applyOptions({
+        autoScale: true,
+        scaleMargins: { top: 0.12, bottom: 0 },
+        borderColor: 'rgba(148,163,184,0.12)',
+        minimumWidth: 82,
+      })
+    }
 
     const rsiData = computeRsi(candleData, 14)
     if (rsiSeries) {
@@ -873,7 +889,7 @@ function LightweightChartWorkspace({
 
     chart.timeScale().fitContent()
     chart.panes()[0]?.setStretchFactor(4)
-    chart.panes()[volumePaneIndex]?.setStretchFactor(2)
+    if (volumePaneIndex != null) chart.panes()[volumePaneIndex]?.setStretchFactor(2)
     if (rsiPaneIndex != null) chart.panes()[rsiPaneIndex]?.setStretchFactor(2)
     if (macdPaneIndex != null) chart.panes()[macdPaneIndex]?.setStretchFactor(2)
 
@@ -957,7 +973,7 @@ function LightweightChartWorkspace({
       }
       chart.remove()
     }
-  }, [chartType, crosshairWidth, divergenceVisible, horizontalLines, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, selectedTool, trendLines, verticalLines])
+  }, [chartType, crosshairWidth, divergenceVisible, horizontalLines, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, selectedTool, trendLines, verticalLines, volumeVisible])
 
   return (
     <div className="lw-layout">
@@ -981,6 +997,7 @@ function App() {
   const [brokerStatus, setBrokerStatus] = useState({ connected: false, configured: false })
   const [historyState, setHistoryState] = useState({ source: 'loading', points: [], error: '' })
   const [quoteState, setQuoteState] = useState({ price: 0, changePercent: 0, source: 'loading' })
+  const [volumeVisible, setVolumeVisible] = useState(true)
   const [rsiVisible, setRsiVisible] = useState(true)
   const [macdVisible, setMacdVisible] = useState(true)
   const [priceZoom, setPriceZoom] = useState(1)
@@ -1165,232 +1182,228 @@ function App() {
         </div>
       </header>
 
-      <section className="workspace">
+      <section className="workspace workspace-wide">
+        <aside className="left-tool-rail">
+          <div className="left-tool-stack">
+            {DRAW_TOOLS.map((tool) => {
+              const Icon = tool.icon
+              return (
+                <button
+                  key={tool.label}
+                  type="button"
+                  className={`left-tool-btn ${selectedTool === tool.label ? 'active' : ''}`}
+                  onClick={() => setSelectedTool(tool.label)}
+                  title={tool.label}
+                >
+                  <Icon size={16} />
+                </button>
+              )
+            })}
+          </div>
+        </aside>
         <main className="chart-panel">
-          <div className="top-bar">
-            <div className="search-box-wrap">
-              <div className="search-box">
-                <Search size={16} />
-                <input
-                  value={searchValue}
-                  onFocus={() => setShowSuggestions(true)}
-                  onChange={(event) => setSearchValue(event.target.value.toUpperCase())}
-                  placeholder="Search NSE stocks and indices"
-                />
-              </div>
-              {showSuggestions ? (
-                <div className="suggestion-panel">
-                  <div className="suggestion-header">
-                    <span>Choose symbol</span>
-                    <button type="button" className="close-btn" onClick={() => setShowSuggestions(false)}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                  {suggestions.map((item) => (
-                    <button
-                      key={`${item.exchange || 'NSE'}:${item.symbol}`}
-                      type="button"
-                      className="suggestion-item"
-                      onClick={() => {
-                        setSelectedSymbol(item)
-                        setSearchValue(item.symbol)
-                        setShowSuggestions(false)
-                      }}
-                    >
-                      <strong>{item.symbol}</strong>
-                      <span>{item.name}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <div />
-          </div>
-
-          <div className="control-row">
-            <div className="chip-row">
-              <label className="interval-select-wrap">
-                <span>TF</span>
-                <select value={interval} onChange={(event) => setInterval(event.target.value)} className="interval-select">
-                  {INTERVAL_OPTIONS.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="chip-row">
-              {RANGE_OPTIONS.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={`chip subtle ${range === item ? 'selected' : ''}`}
-                  onClick={() => setRange(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="control-row">
-            <div className="chip-row">
-              {[
-                { label: 'Candles', value: 'stroke' },
-                { label: 'Solid', value: 'solid' },
-                { label: 'OHLC', value: 'ohlc' },
-              ].map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  className={`chip subtle ${chartType === item.value ? 'selected' : ''}`}
-                  onClick={() => setChartType(item.value)}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <div className="chip-row">
-              <button type="button" className={`chip subtle ${rsiVisible ? 'selected' : ''}`} onClick={() => setRsiVisible((value) => !value)}>
-                {rsiVisible ? 'Hide RSI' : 'Show RSI'}
-              </button>
-              <button type="button" className={`chip subtle ${macdVisible ? 'selected' : ''}`} onClick={() => setMacdVisible((value) => !value)}>
-                {macdVisible ? 'Hide MACD' : 'Show MACD'}
-              </button>
-              <button type="button" className={`chip subtle ${divergenceVisible ? 'selected' : ''}`} onClick={() => setDivergenceVisible((value) => !value)}>
-                {divergenceVisible ? 'Hide Barione Div' : 'Show Barione Div'}
-              </button>
-              <button type="button" className="chip subtle" onClick={() => setPriceZoom(1)}>
-                Reset Y
-              </button>
-            </div>
-          </div>
-
-          <section className="chart-card">
-            <div className="chart-header-stack">
-              <div className="chart-header-grid">
-                <div className="chart-header-left">
-                  <div className="stats-strip floating-stats">
-                    <span className="symbol-label">{selectedSymbol.symbol}</span>
-                    <span>O {formatPrice(stats.open)}</span>
-                    <span>H {formatPrice(stats.high)}</span>
-                    <span>L {formatPrice(stats.low)}</span>
-                    <span>C {formatPrice(stats.close)}</span>
-                    <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
-                  </div>
-                  <div className="stats-strip floating-ma-row">
-                    <span className="ma-inline ma20">S20 {formatMaybePrice(sma20Value)}</span>
-                    <span className="ma-inline ma50">S50 {formatMaybePrice(sma50Value)}</span>
-                    <span className="ma-inline ma200">S200 {formatMaybePrice(sma200Value)}</span>
-                  </div>
-                </div>
-
-                <div className="chart-header-right">
-                  <div className="symbol-stack chart-dock">
-                    <div className="symbol-strip">
-                      <strong>{selectedSymbol.symbol}</strong>
-                      <span>{selectedSymbol.name}</span>
-                      <span>{formatPrice(quoteState.price)} INR</span>
-                      <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+          <section className="workspace-header-card">
+            <div className="workspace-header-grid">
+              <div className="workspace-header-left">
+                <div className="workspace-search-box">
+                  <div className="search-box-wrap">
+                    <div className="search-box">
+                      <Search size={16} />
+                      <input
+                        value={searchValue}
+                        onFocus={() => setShowSuggestions(true)}
+                        onChange={(event) => setSearchValue(event.target.value.toUpperCase())}
+                        placeholder="Search NSE stocks and indices"
+                      />
                     </div>
-                    <div className="tool-inline-bar tool-inline-right">
-                      <div className="tool-inline-group">
-                        {DRAW_TOOLS.map((tool) => {
-                          const Icon = tool.icon
-                          return (
-                            <button
-                              key={tool.label}
-                              type="button"
-                              className={`tool-inline-btn ${selectedTool === tool.label ? 'active' : ''}`}
-                              onClick={() => setSelectedTool(tool.label)}
-                              title={tool.label}
-                            >
-                              <Icon size={14} />
-                              <span>{tool.label}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                    <div className="tool-inline-bar tool-inline-right tool-inline-secondary">
-                      <div className="tool-inline-group tool-inline-colors">
-                        <label className="tool-color">
-                          <span>Trend</span>
-                          <input type="color" value={trendColor} onChange={(event) => setTrendColor(event.target.value)} />
-                        </label>
-                        <label className="tool-color">
-                          <span>H Line</span>
-                          <input type="color" value={levelColor} onChange={(event) => setLevelColor(event.target.value)} />
-                        </label>
-                        <label className="tool-color">
-                          <span>V Line</span>
-                          <input type="color" value={verticalColor} onChange={(event) => setVerticalColor(event.target.value)} />
-                        </label>
-                      </div>
-                      <div className="tool-inline-group tool-inline-controls">
-                        <label className="tool-slider">
-                          <span>Width</span>
-                          <input type="range" min="1" max="5" step="1" value={drawWidth} onChange={(event) => setDrawWidth(Number(event.target.value))} />
-                        </label>
-                        <label className="tool-slider">
-                          <span>Soft</span>
-                          <input type="range" min="0.2" max="1" step="0.05" value={drawSoftness} onChange={(event) => setDrawSoftness(Number(event.target.value))} />
-                        </label>
-                        <label className="tool-slider">
-                          <span>Cursor</span>
-                          <input type="range" min="1" max="4" step="1" value={crosshairWidth} onChange={(event) => setCrosshairWidth(Number(event.target.value))} />
-                        </label>
-                        {selectedDrawing ? (
+                    {showSuggestions ? (
+                      <div className="suggestion-panel">
+                        <div className="suggestion-header">
+                          <span>Choose symbol</span>
+                          <button type="button" className="close-btn" onClick={() => setShowSuggestions(false)}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                        {suggestions.map((item) => (
                           <button
+                            key={`${item.exchange || 'NSE'}:${item.symbol}`}
                             type="button"
-                            className="tool-inline-btn"
+                            className="suggestion-item"
                             onClick={() => {
-                              if (selectedDrawing.type === 'trend') {
-                                setTrendLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
-                              }
-                              if (selectedDrawing.type === 'horizontal') {
-                                setHorizontalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
-                              }
-                              if (selectedDrawing.type === 'vertical') {
-                                setVerticalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
-                              }
-                              setSelectedDrawing(null)
+                              setSelectedSymbol(item)
+                              setSearchValue(item.symbol)
+                              setShowSuggestions(false)
                             }}
                           >
-                            Delete selected
+                            <strong>{item.symbol}</strong>
+                            <span>{item.name}</span>
                           </button>
-                        ) : null}
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="workspace-header-left-body">
+                  <div className="control-row">
+                    <div className="chip-row">
+                      <label className="interval-select-wrap">
+                        <span>TF</span>
+                        <select value={interval} onChange={(event) => setInterval(event.target.value)} className="interval-select">
+                          {INTERVAL_OPTIONS.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="interval-select-wrap">
+                        <span>RG</span>
+                        <select value={range} onChange={(event) => setRange(event.target.value)} className="interval-select">
+                          {RANGE_OPTIONS.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="interval-select-wrap">
+                        <span>Type</span>
+                        <select value={chartType} onChange={(event) => setChartType(event.target.value)} className="interval-select">
+                          <option value="stroke">Candles</option>
+                          <option value="solid">Solid</option>
+                          <option value="ohlc">OHLC</option>
+                          <option value="line">Line</option>
+                        </select>
+                      </label>
+                      <button type="button" className="chip subtle" onClick={() => setPriceZoom(1)}>
+                        Reset Y
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="control-row">
+                    <div className="chart-header-note">{toolHint}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="workspace-header-right">
+                <div className="symbol-stack chart-dock">
+                  <div className="symbol-strip">
+                    <strong>{selectedSymbol.symbol}</strong>
+                    <span>{selectedSymbol.name}</span>
+                    <span>{formatPrice(quoteState.price)} INR</span>
+                    <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+                  </div>
+                  <div className="tool-inline-bar tool-inline-right tool-inline-secondary">
+                    <div className="tool-inline-group tool-inline-colors">
+                      <label className="tool-color">
+                        <span>Trend</span>
+                        <input type="color" value={trendColor} onChange={(event) => setTrendColor(event.target.value)} />
+                      </label>
+                      <label className="tool-color">
+                        <span>H Line</span>
+                        <input type="color" value={levelColor} onChange={(event) => setLevelColor(event.target.value)} />
+                      </label>
+                      <label className="tool-color">
+                        <span>V Line</span>
+                        <input type="color" value={verticalColor} onChange={(event) => setVerticalColor(event.target.value)} />
+                      </label>
+                    </div>
+                    <div className="tool-inline-group tool-inline-controls">
+                      <label className="tool-slider">
+                        <span>Width</span>
+                        <input type="range" min="1" max="5" step="1" value={drawWidth} onChange={(event) => setDrawWidth(Number(event.target.value))} />
+                      </label>
+                      <label className="tool-slider">
+                        <span>Soft</span>
+                        <input type="range" min="0.2" max="1" step="0.05" value={drawSoftness} onChange={(event) => setDrawSoftness(Number(event.target.value))} />
+                      </label>
+                      <label className="tool-slider">
+                        <span>Cursor</span>
+                        <input type="range" min="1" max="4" step="1" value={crosshairWidth} onChange={(event) => setCrosshairWidth(Number(event.target.value))} />
+                      </label>
+                      {selectedDrawing ? (
                         <button
                           type="button"
                           className="tool-inline-btn"
                           onClick={() => {
-                            setTrendDraft(null)
-                            setTrendLines([])
-                            setHorizontalLines([])
-                            setVerticalLines([])
+                            if (selectedDrawing.type === 'trend') {
+                              setTrendLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                            }
+                            if (selectedDrawing.type === 'horizontal') {
+                              setHorizontalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                            }
+                            if (selectedDrawing.type === 'vertical') {
+                              setVerticalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                            }
                             setSelectedDrawing(null)
                           }}
                         >
-                          Clear
+                          Delete selected
                         </button>
-                      </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="tool-inline-btn"
+                        onClick={() => {
+                          setTrendDraft(null)
+                          setTrendLines([])
+                          setHorizontalLines([])
+                          setVerticalLines([])
+                          setSelectedDrawing(null)
+                        }}
+                      >
+                        Clear
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
 
-              <div className="pane-legend chart-pane-legend">
-                <span className="pane-chip">Price</span>
-                <span className="pane-chip">Volume</span>
-                {rsiVisible ? <span className="pane-chip">RSI 14</span> : null}
-                {macdVisible ? <span className="pane-chip">MACD</span> : null}
+          <section className="chart-card">
+            <div className="chart-top-overlay">
+              <div className="chart-indicator-strip">
+                <button type="button" className={`indicator-chip ${volumeVisible ? 'active' : ''}`} onClick={() => setVolumeVisible((value) => !value)}>
+                  <span>VOL</span>
+                  {volumeVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+                <button type="button" className={`indicator-chip ${rsiVisible ? 'active' : ''}`} onClick={() => setRsiVisible((value) => !value)}>
+                  <span>RSI 14</span>
+                  {rsiVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+                <button type="button" className={`indicator-chip ${macdVisible ? 'active' : ''}`} onClick={() => setMacdVisible((value) => !value)}>
+                  <span>MACD</span>
+                  {macdVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+                <button type="button" className={`indicator-chip ${divergenceVisible ? 'active' : ''}`} onClick={() => setDivergenceVisible((value) => !value)}>
+                  <span>Barione Div</span>
+                  {divergenceVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+              </div>
+              <div className="chart-ohlc-box">
+                <div className="stats-strip floating-stats">
+                  <span className="symbol-label">{selectedSymbol.symbol}</span>
+                  <span>O {formatPrice(stats.open)}</span>
+                  <span>H {formatPrice(stats.high)}</span>
+                  <span>L {formatPrice(stats.low)}</span>
+                  <span>C {formatPrice(stats.close)}</span>
+                  <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+                </div>
+                <div className="stats-strip floating-ma-row">
+                  <span className="ma-inline ma20">S20 {formatMaybePrice(sma20Value)}</span>
+                  <span className="ma-inline ma50">S50 {formatMaybePrice(sma50Value)}</span>
+                  <span className="ma-inline ma200">S200 {formatMaybePrice(sma200Value)}</span>
+                </div>
               </div>
             </div>
             <LightweightChartWorkspace
               points={historyState.points}
               chartType={chartType}
+              volumeVisible={volumeVisible}
               rsiVisible={rsiVisible}
               macdVisible={macdVisible}
               priceZoom={priceZoom}
