@@ -262,6 +262,26 @@ button { cursor: pointer; }
   font-size: 12px;
 }
 
+.ma-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.14);
+  background: rgba(15,23,42,0.58);
+  font-weight: 600;
+}
+
+.ma20 {
+  color: #4ade80;
+}
+
+.ma50 {
+  color: #60a5fa;
+}
+
+.ma200 {
+  color: #f87171;
+}
+
 .symbol-label {
   font-weight: 700;
   letter-spacing: 0.12em;

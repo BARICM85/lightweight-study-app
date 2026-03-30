@@ -46,6 +46,10 @@ function formatPercent(value) {
   return `${safe >= 0 ? '+' : ''}${safe.toFixed(2)}%`
 }
 
+function formatMaybePrice(value) {
+  return Number.isFinite(value) ? formatPrice(value) : 'n/a'
+}
+
 function sourceLabel(source) {
   if (source === 'zerodha') return 'Zerodha live'
   if (source === 'yahoo') return 'Last trading day'
@@ -80,6 +84,11 @@ function computeProgressiveSma(points, length) {
       value: Number(average(buffer).toFixed(2)),
     }
   }).filter((item) => Number.isFinite(item.value))
+}
+
+function latestSeriesValue(series) {
+  if (!series.length) return null
+  return series[series.length - 1]?.value ?? null
 }
 
 function computeRsi(points, period = 14) {
@@ -270,6 +279,18 @@ function LightweightChartWorkspace({
       priceLineVisible: false,
       lastValueVisible: false,
     }, 0)
+    const sma20Series = chart.addSeries(LineSeries, {
+      color: '#22c55e',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    }, 0)
+    const sma50Series = chart.addSeries(LineSeries, {
+      color: '#3b82f6',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    }, 0)
 
     const volumePaneIndex = 1
     let nextPaneIndex = 2
@@ -324,6 +345,8 @@ function LightweightChartWorkspace({
     }))
 
     priceSeries.setData(candleData)
+    sma20Series.setData(computeSma(candleData, 20))
+    sma50Series.setData(computeSma(candleData, 50))
     sma200Series.setData(computeProgressiveSma(candleData, 200))
 
     volumeSeries.setData(points.map((point) => ({
@@ -499,6 +522,9 @@ function App() {
     close: lastBar?.close ?? quoteState.price ?? 0,
     change: Number.isFinite(quoteState.changePercent) ? quoteState.changePercent : 0,
   }), [lastBar, quoteState])
+  const sma20Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 20)), [historyState.points])
+  const sma50Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 50)), [historyState.points])
+  const sma200Value = useMemo(() => latestSeriesValue(computeProgressiveSma(historyState.points, 200)), [historyState.points])
 
   return (
     <div className="app-shell">
@@ -591,6 +617,9 @@ function App() {
             <span>H {formatPrice(stats.high)}</span>
             <span>L {formatPrice(stats.low)}</span>
             <span>C {formatPrice(stats.close)}</span>
+            <span className="ma-chip ma20">SMA20 {formatMaybePrice(sma20Value)}</span>
+            <span className="ma-chip ma50">SMA50 {formatMaybePrice(sma50Value)}</span>
+            <span className="ma-chip ma200">SMA200 {formatMaybePrice(sma200Value)}</span>
             <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
             {historyState.error ? <span className="error-text">{historyState.error}</span> : null}
           </div>

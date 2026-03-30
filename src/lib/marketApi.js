@@ -43,6 +43,14 @@ const INTERVAL_TO_API = {
   '1M': 'day',
 }
 
+function resolveHistoryRequestRange(range, interval) {
+  if (range !== 'ALL') return RANGE_TO_LOOKBACK[range] || 'ytd'
+  if (interval === '1D') return '5y'
+  if (interval === '1W') return '10y'
+  if (interval === '1M') return 'all'
+  return '1y'
+}
+
 function apiUrl(path) {
   const base = DEFAULT_API_BASE.endsWith('/') ? DEFAULT_API_BASE.slice(0, -1) : DEFAULT_API_BASE
   return base ? `${base}${path}` : path
@@ -216,7 +224,7 @@ export async function fetchBrokerStatus() {
 export async function fetchMarketHistory(symbol, range = 'YTD', interval = '1D') {
   try {
     const payload = await requestJson(
-      `/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(RANGE_TO_LOOKBACK[range] || 'ytd')}&interval=${encodeURIComponent(INTERVAL_TO_API[interval] || 'day')}`,
+      `/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(resolveHistoryRequestRange(range, interval))}&interval=${encodeURIComponent(INTERVAL_TO_API[interval] || 'day')}`,
     )
     const points = aggregatePoints(normalizeHistory(payload), interval)
     if (!points.length) throw new Error('No history points returned')
