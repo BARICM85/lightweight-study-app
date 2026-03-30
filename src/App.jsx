@@ -572,7 +572,7 @@ function LightweightChartWorkspace({
       handleScale: true,
     }
 
-    const totalHeight = 430 + 92 + (rsiVisible ? 104 : 0) + (macdVisible ? 116 : 0) + 24
+    const totalHeight = 360 + 88 + (rsiVisible ? 96 : 0) + (macdVisible ? 108 : 0) + 20
 
     const chart = createChart(chartRef.current, {
       ...sharedOptions,
@@ -872,7 +872,7 @@ function LightweightChartWorkspace({
     }
 
     chart.timeScale().fitContent()
-    chart.panes()[0]?.setStretchFactor(5)
+    chart.panes()[0]?.setStretchFactor(4)
     chart.panes()[volumePaneIndex]?.setStretchFactor(2)
     if (rsiPaneIndex != null) chart.panes()[rsiPaneIndex]?.setStretchFactor(2)
     if (macdPaneIndex != null) chart.panes()[macdPaneIndex]?.setStretchFactor(2)
@@ -1205,96 +1205,7 @@ function App() {
               ) : null}
             </div>
 
-            <div className="symbol-stack">
-              <div className="symbol-strip">
-                <strong>{selectedSymbol.symbol}</strong>
-                <span>{selectedSymbol.name}</span>
-                <span>{formatPrice(quoteState.price)} INR</span>
-                <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
-              </div>
-              <div className="tool-inline-bar tool-inline-right">
-                <div className="tool-inline-group">
-                  {DRAW_TOOLS.map((tool) => {
-                    const Icon = tool.icon
-                    return (
-                      <button
-                        key={tool.label}
-                        type="button"
-                        className={`tool-inline-btn ${selectedTool === tool.label ? 'active' : ''}`}
-                        onClick={() => setSelectedTool(tool.label)}
-                        title={tool.label}
-                      >
-                        <Icon size={14} />
-                        <span>{tool.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="tool-inline-bar tool-inline-right tool-inline-secondary">
-                <div className="tool-inline-group tool-inline-colors">
-                  <label className="tool-color">
-                    <span>Trend</span>
-                    <input type="color" value={trendColor} onChange={(event) => setTrendColor(event.target.value)} />
-                  </label>
-                  <label className="tool-color">
-                    <span>H Line</span>
-                    <input type="color" value={levelColor} onChange={(event) => setLevelColor(event.target.value)} />
-                  </label>
-                  <label className="tool-color">
-                    <span>V Line</span>
-                    <input type="color" value={verticalColor} onChange={(event) => setVerticalColor(event.target.value)} />
-                  </label>
-                  <label className="tool-slider">
-                    <span>Width</span>
-                    <input type="range" min="1" max="5" step="1" value={drawWidth} onChange={(event) => setDrawWidth(Number(event.target.value))} />
-                  </label>
-                  <label className="tool-slider">
-                    <span>Soft</span>
-                    <input type="range" min="0.2" max="1" step="0.05" value={drawSoftness} onChange={(event) => setDrawSoftness(Number(event.target.value))} />
-                  </label>
-                  <label className="tool-slider">
-                    <span>Cursor</span>
-                    <input type="range" min="1" max="4" step="1" value={crosshairWidth} onChange={(event) => setCrosshairWidth(Number(event.target.value))} />
-                  </label>
-                </div>
-                <div className="tool-inline-group">
-                  {selectedDrawing ? (
-                    <button
-                      type="button"
-                      className="tool-inline-btn"
-                      onClick={() => {
-                        if (selectedDrawing.type === 'trend') {
-                          setTrendLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
-                        }
-                        if (selectedDrawing.type === 'horizontal') {
-                          setHorizontalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
-                        }
-                        if (selectedDrawing.type === 'vertical') {
-                          setVerticalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
-                        }
-                        setSelectedDrawing(null)
-                      }}
-                    >
-                      Delete selected
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="tool-inline-btn"
-                    onClick={() => {
-                      setTrendDraft(null)
-                      setTrendLines([])
-                      setHorizontalLines([])
-                      setVerticalLines([])
-                      setSelectedDrawing(null)
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            </div>
+            <div />
           </div>
 
           <div className="control-row">
@@ -1358,32 +1269,124 @@ function App() {
           </div>
 
           <section className="chart-card">
-            <div className="chart-overlay-header">
-              <div className="stats-strip floating-stats">
-                <span className="symbol-label">{selectedSymbol.symbol}</span>
-                <span className="date-chip">{formatChartDate(stats.time)}</span>
-                <span>O {formatPrice(stats.open)}</span>
-                <span>H {formatPrice(stats.high)}</span>
-                <span>L {formatPrice(stats.low)}</span>
-                <span>C {formatPrice(stats.close)}</span>
-                <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+            <div className="chart-header-stack">
+              <div className="chart-header-grid">
+                <div className="chart-header-left">
+                  <div className="stats-strip floating-stats">
+                    <span className="symbol-label">{selectedSymbol.symbol}</span>
+                    <span>O {formatPrice(stats.open)}</span>
+                    <span>H {formatPrice(stats.high)}</span>
+                    <span>L {formatPrice(stats.low)}</span>
+                    <span>C {formatPrice(stats.close)}</span>
+                    <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+                  </div>
+                  <div className="stats-strip floating-ma-row">
+                    <span className="ma-inline ma20">S20 {formatMaybePrice(sma20Value)}</span>
+                    <span className="ma-inline ma50">S50 {formatMaybePrice(sma50Value)}</span>
+                    <span className="ma-inline ma200">S200 {formatMaybePrice(sma200Value)}</span>
+                  </div>
+                </div>
+
+                <div className="chart-header-right">
+                  <div className="symbol-stack chart-dock">
+                    <div className="symbol-strip">
+                      <strong>{selectedSymbol.symbol}</strong>
+                      <span>{selectedSymbol.name}</span>
+                      <span>{formatPrice(quoteState.price)} INR</span>
+                      <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+                    </div>
+                    <div className="tool-inline-bar tool-inline-right">
+                      <div className="tool-inline-group">
+                        {DRAW_TOOLS.map((tool) => {
+                          const Icon = tool.icon
+                          return (
+                            <button
+                              key={tool.label}
+                              type="button"
+                              className={`tool-inline-btn ${selectedTool === tool.label ? 'active' : ''}`}
+                              onClick={() => setSelectedTool(tool.label)}
+                              title={tool.label}
+                            >
+                              <Icon size={14} />
+                              <span>{tool.label}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div className="tool-inline-bar tool-inline-right tool-inline-secondary">
+                      <div className="tool-inline-group tool-inline-colors">
+                        <label className="tool-color">
+                          <span>Trend</span>
+                          <input type="color" value={trendColor} onChange={(event) => setTrendColor(event.target.value)} />
+                        </label>
+                        <label className="tool-color">
+                          <span>H Line</span>
+                          <input type="color" value={levelColor} onChange={(event) => setLevelColor(event.target.value)} />
+                        </label>
+                        <label className="tool-color">
+                          <span>V Line</span>
+                          <input type="color" value={verticalColor} onChange={(event) => setVerticalColor(event.target.value)} />
+                        </label>
+                      </div>
+                      <div className="tool-inline-group tool-inline-controls">
+                        <label className="tool-slider">
+                          <span>Width</span>
+                          <input type="range" min="1" max="5" step="1" value={drawWidth} onChange={(event) => setDrawWidth(Number(event.target.value))} />
+                        </label>
+                        <label className="tool-slider">
+                          <span>Soft</span>
+                          <input type="range" min="0.2" max="1" step="0.05" value={drawSoftness} onChange={(event) => setDrawSoftness(Number(event.target.value))} />
+                        </label>
+                        <label className="tool-slider">
+                          <span>Cursor</span>
+                          <input type="range" min="1" max="4" step="1" value={crosshairWidth} onChange={(event) => setCrosshairWidth(Number(event.target.value))} />
+                        </label>
+                        {selectedDrawing ? (
+                          <button
+                            type="button"
+                            className="tool-inline-btn"
+                            onClick={() => {
+                              if (selectedDrawing.type === 'trend') {
+                                setTrendLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                              }
+                              if (selectedDrawing.type === 'horizontal') {
+                                setHorizontalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                              }
+                              if (selectedDrawing.type === 'vertical') {
+                                setVerticalLines((current) => current.filter((item) => item.id !== selectedDrawing.id))
+                              }
+                              setSelectedDrawing(null)
+                            }}
+                          >
+                            Delete selected
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="tool-inline-btn"
+                          onClick={() => {
+                            setTrendDraft(null)
+                            setTrendLines([])
+                            setHorizontalLines([])
+                            setVerticalLines([])
+                            setSelectedDrawing(null)
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="stats-strip floating-ma-row">
-                <span className="ma-inline ma20">S20 {formatMaybePrice(sma20Value)}</span>
-                <span className="ma-inline ma50">S50 {formatMaybePrice(sma50Value)}</span>
-                <span className="ma-inline ma200">S200 {formatMaybePrice(sma200Value)}</span>
-              </div>
-              <div className="pane-legend floating">
+
+              <div className="pane-legend chart-pane-legend">
                 <span className="pane-chip">Price</span>
                 <span className="pane-chip">Volume</span>
                 {rsiVisible ? <span className="pane-chip">RSI 14</span> : null}
                 {macdVisible ? <span className="pane-chip">MACD</span> : null}
               </div>
-              {cursorAxisStyle ? (
-                <div className="cursor-date-pill chart-cursor-pill" style={cursorAxisStyle}>
-                  {formatChartDate(stats.time)}
-                </div>
-              ) : null}
             </div>
             <LightweightChartWorkspace
               points={historyState.points}
@@ -1402,6 +1405,11 @@ function App() {
               selectedDrawing={selectedDrawing}
               onChartAction={handleChartAction}
             />
+            {cursorAxisStyle ? (
+              <div className="cursor-date-pill chart-cursor-pill" style={cursorAxisStyle}>
+                {formatChartDate(stats.time)}
+              </div>
+            ) : null}
           </section>
         </main>
       </section>
