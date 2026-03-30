@@ -14,6 +14,7 @@ import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
+  createSeriesMarkers,
   createChart,
   HistogramSeries,
   LineSeries,
@@ -178,6 +179,161 @@ function computeMacd(points, fast = 12, slow = 26, signalPeriod = 9) {
   return { macd, signal, histogram }
 }
 
+function computeMomentum(points, period = 20) {
+  return points.map((point, index) => ({
+    time: point.time,
+    value: index >= period ? Number((point.close - points[index - period].close).toFixed(2)) : null,
+  }))
+}
+
+function isPivotHigh(points, index, left = 5, right = 5) {
+  if (index < left || index + right >= points.length) return false
+  const pivot = points[index].high
+  for (let offset = 1; offset <= left; offset += 1) {
+    if (points[index - offset].high >= pivot) return false
+  }
+  for (let offset = 1; offset <= right; offset += 1) {
+    if (points[index + offset].high > pivot) return false
+  }
+  return true
+}
+
+function isPivotLow(points, index, left = 5, right = 5) {
+  if (index < left || index + right >= points.length) return false
+  const pivot = points[index].low
+  for (let offset = 1; offset <= left; offset += 1) {
+    if (points[index - offset].low <= pivot) return false
+  }
+  for (let offset = 1; offset <= right; offset += 1) {
+    if (points[index + offset].low < pivot) return false
+  }
+  return true
+}
+
+function detectBarioneDivergence(points, options = {}) {
+  const {
+    barsBack = 200,
+    rsiPeriod = 14,
+    momentumPeriod = 20,
+    pivotLeft = 5,
+    pivotRight = 5,
+    useRsiFilter = true,
+  } = options
+
+  if (points.length < Math.max(barsBack, momentumPeriod + rsiPeriod + pivotLeft + pivotRight + 2)) {
+    return { markers: [], priceSegments: [], rsiSegments: [] }
+  }
+
+  const rsiSeries = computeRsi(points, rsiPeriod)
+  const rsiMap = new Map(rsiSeries.map((item) => [item.time, item.value]))
+  const momentumSeries = computeMomentum(points, momentumPeriod)
+  const momentumMap = new Map(momentumSeries.filter((item) => item.value != null).map((item) => [item.time, item.value]))
+
+  const markers = []
+  const priceSegments = []
+  const rsiSegments = []
+  let previousHighPivot = null
+  let previousLowPivot = null
+
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]
+    const rsiValue = rsiMap.get(point.time)
+    const momentumValue = momentumMap.get(point.time)
+
+    if (isPivotHigh(points, index, pivotLeft, pivotRight) && Number.isFinite(rsiValue) && Number.isFinite(momentumValue)) {
+      const currentHighPivot = {
+        index,
+        time: point.time,
+        price: point.high,
+        oscillator: rsiValue,
+        momentum: momentumValue,
+      }
+
+      if (previousHighPivot && (currentHighPivot.index - previousHighPivot.index) <= barsBack) {
+        const bearish = (
+          currentHighPivot.price > previousHighPivot.price
+          && currentHighPivot.oscillator < previousHighPivot.oscillator
+          && currentHighPivot.momentum < previousHighPivot.momentum
+          && (!useRsiFilter || currentHighPivot.oscillator > 70 || previousHighPivot.oscillator > 70)
+        )
+
+        if (bearish) {
+          markers.push({
+            time: currentHighPivot.time,
+            position: 'aboveBar',
+            shape: 'arrowDown',
+            color: '#ef4444',
+            text: 'Barione Bear',
+          })
+          priceSegments.push({
+            color: '#ef4444',
+            points: [
+              { time: previousHighPivot.time, value: previousHighPivot.price },
+              { time: currentHighPivot.time, value: currentHighPivot.price },
+            ],
+          })
+          rsiSegments.push({
+            color: '#ef4444',
+            points: [
+              { time: previousHighPivot.time, value: previousHighPivot.oscillator },
+              { time: currentHighPivot.time, value: currentHighPivot.oscillator },
+            ],
+          })
+        }
+      }
+
+      previousHighPivot = currentHighPivot
+    }
+
+    if (isPivotLow(points, index, pivotLeft, pivotRight) && Number.isFinite(rsiValue) && Number.isFinite(momentumValue)) {
+      const currentLowPivot = {
+        index,
+        time: point.time,
+        price: point.low,
+        oscillator: rsiValue,
+        momentum: momentumValue,
+      }
+
+      if (previousLowPivot && (currentLowPivot.index - previousLowPivot.index) <= barsBack) {
+        const bullish = (
+          currentLowPivot.price < previousLowPivot.price
+          && currentLowPivot.oscillator > previousLowPivot.oscillator
+          && currentLowPivot.momentum > previousLowPivot.momentum
+          && (!useRsiFilter || currentLowPivot.oscillator < 30 || previousLowPivot.oscillator < 30)
+        )
+
+        if (bullish) {
+          markers.push({
+            time: currentLowPivot.time,
+            position: 'belowBar',
+            shape: 'arrowUp',
+            color: '#22c55e',
+            text: 'Barione Bull',
+          })
+          priceSegments.push({
+            color: '#22c55e',
+            points: [
+              { time: previousLowPivot.time, value: previousLowPivot.price },
+              { time: currentLowPivot.time, value: currentLowPivot.price },
+            ],
+          })
+          rsiSegments.push({
+            color: '#22c55e',
+            points: [
+              { time: previousLowPivot.time, value: previousLowPivot.oscillator },
+              { time: currentLowPivot.time, value: currentLowPivot.oscillator },
+            ],
+          })
+        }
+      }
+
+      previousLowPivot = currentLowPivot
+    }
+  }
+
+  return { markers, priceSegments, rsiSegments }
+}
+
 function computeVisiblePriceRange(points, zoomFactor = 1) {
   if (!points.length) return null
   const lows = points.map((point) => point.low).filter((value) => Number.isFinite(value) && value > 0)
@@ -201,6 +357,7 @@ function LightweightChartWorkspace({
   macdVisible,
   rsiVisible,
   priceZoom,
+  divergenceVisible,
 }) {
   const chartRef = useRef(null)
 
@@ -291,6 +448,9 @@ function LightweightChartWorkspace({
       priceLineVisible: false,
       lastValueVisible: false,
     }, 0)
+    const divergenceMarkers = createSeriesMarkers(priceSeries, [], {
+      zOrder: 'aboveSeries',
+    })
 
     const volumePaneIndex = 1
     let nextPaneIndex = 2
@@ -434,6 +594,42 @@ function LightweightChartWorkspace({
       })
     }
 
+    const divergence = detectBarioneDivergence(candleData)
+    const priceDivergenceLines = []
+    const rsiDivergenceLines = []
+    if (divergenceVisible) {
+      divergenceMarkers.setMarkers(divergence.markers)
+      divergence.priceSegments.forEach((segment) => {
+        const line = chart.addSeries(LineSeries, {
+          color: segment.color,
+          lineWidth: 2,
+          lineStyle: 0,
+          crosshairMarkerVisible: false,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        }, 0)
+        line.setData(segment.points)
+        priceDivergenceLines.push(line)
+      })
+
+      if (rsiSeries && rsiPaneIndex != null) {
+        divergence.rsiSegments.forEach((segment) => {
+          const line = chart.addSeries(LineSeries, {
+            color: segment.color,
+            lineWidth: 2,
+            lineStyle: 0,
+            crosshairMarkerVisible: false,
+            lastValueVisible: false,
+            priceLineVisible: false,
+          }, rsiPaneIndex)
+          line.setData(segment.points)
+          rsiDivergenceLines.push(line)
+        })
+      }
+    } else {
+      divergenceMarkers.setMarkers([])
+    }
+
     chart.timeScale().fitContent()
     chart.panes()[0]?.setStretchFactor(5)
     chart.panes()[volumePaneIndex]?.setStretchFactor(2)
@@ -450,9 +646,12 @@ function LightweightChartWorkspace({
 
     return () => {
       window.removeEventListener('resize', resizeCharts)
+      divergenceMarkers.detach()
+      priceDivergenceLines.forEach((series) => chart.removeSeries(series))
+      rsiDivergenceLines.forEach((series) => chart.removeSeries(series))
       chart.remove()
     }
-  }, [chartType, macdVisible, points, priceZoom, rsiVisible])
+  }, [chartType, divergenceVisible, macdVisible, points, priceZoom, rsiVisible])
 
   return (
     <div className="lw-layout">
@@ -476,6 +675,7 @@ function App() {
   const [rsiVisible, setRsiVisible] = useState(true)
   const [macdVisible, setMacdVisible] = useState(true)
   const [priceZoom, setPriceZoom] = useState(1)
+  const [divergenceVisible, setDivergenceVisible] = useState(true)
 
   useEffect(() => {
     let active = true
@@ -675,6 +875,9 @@ function App() {
               <button type="button" className={`chip subtle ${macdVisible ? 'selected' : ''}`} onClick={() => setMacdVisible((value) => !value)}>
                 {macdVisible ? 'Hide MACD' : 'Show MACD'}
               </button>
+              <button type="button" className={`chip subtle ${divergenceVisible ? 'selected' : ''}`} onClick={() => setDivergenceVisible((value) => !value)}>
+                {divergenceVisible ? 'Hide Barione Div' : 'Show Barione Div'}
+              </button>
               <button type="button" className="chip subtle" onClick={() => setPriceZoom((value) => Math.min(4, Number((value + 0.25).toFixed(2))))}>
                 Y+
               </button>
@@ -694,6 +897,7 @@ function App() {
               rsiVisible={rsiVisible}
               macdVisible={macdVisible}
               priceZoom={priceZoom}
+              divergenceVisible={divergenceVisible}
             />
           </section>
         </main>
