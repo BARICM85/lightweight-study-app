@@ -435,6 +435,14 @@ function LightweightChartWorkspace({
       height: totalHeight,
     })
 
+    chart.applyOptions({
+      crosshair: {
+        vertLine: {
+          labelVisible: false,
+        },
+      },
+    })
+
     const priceSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#17c964',
       downColor: '#ef4444',
