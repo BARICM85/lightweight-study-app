@@ -605,6 +605,9 @@ function LightweightChartWorkspace({
   onHoverChange,
   onAxisChange,
   selectedTool,
+  trendColor,
+  drawWidth,
+  drawSoftness,
   trendLines,
   trendDraft,
   horizontalLines,
@@ -1614,6 +1617,9 @@ function App() {
               onHoverChange={setHoveredBar}
                 onAxisChange={setTopAxisTicks}
                 selectedTool={selectedTool}
+                trendColor={trendColor}
+                drawWidth={drawWidth}
+                drawSoftness={drawSoftness}
                 trendLines={trendLines}
                 trendDraft={trendDraft}
                 horizontalLines={horizontalLines}
