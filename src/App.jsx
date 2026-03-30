@@ -13,6 +13,7 @@ import {
 import {
   CandlestickSeries,
   ColorType,
+  CrosshairMode,
   createChart,
   HistogramSeries,
   LineSeries,
@@ -67,6 +68,18 @@ function computeSma(points, length) {
       value: buffer.length === length ? Number(average(buffer).toFixed(2)) : null,
     }
   }).filter((item) => item.value !== null)
+}
+
+function computeProgressiveSma(points, length) {
+  const buffer = []
+  return points.map((point) => {
+    buffer.push(point.close)
+    if (buffer.length > length) buffer.shift()
+    return {
+      time: point.time,
+      value: Number(average(buffer).toFixed(2)),
+    }
+  }).filter((item) => Number.isFinite(item.value))
 }
 
 function computeRsi(points, period = 14) {
@@ -180,19 +193,21 @@ function LightweightChartWorkspace({
   rsiVisible,
   priceZoom,
 }) {
-  const priceRef = useRef(null)
-  const volumeRef = useRef(null)
-  const rsiRef = useRef(null)
-  const macdRef = useRef(null)
+  const chartRef = useRef(null)
 
   useEffect(() => {
-    if (!priceRef.current || !volumeRef.current || !rsiRef.current || !macdRef.current) return undefined
+    if (!chartRef.current) return undefined
 
     const sharedOptions = {
       layout: {
         background: { type: ColorType.Solid, color: '#0b111b' },
         textColor: '#e2e8f0',
         attributionLogo: false,
+        panes: {
+          separatorColor: 'rgba(148,163,184,0.12)',
+          separatorHoverColor: 'rgba(148,163,184,0.18)',
+          enableResize: false,
+        },
       },
       grid: {
         vertLines: { color: 'rgba(148,163,184,0.07)' },
@@ -201,6 +216,7 @@ function LightweightChartWorkspace({
       rightPriceScale: {
         borderColor: 'rgba(148,163,184,0.12)',
         scaleMargins: { top: 0.04, bottom: 0.04 },
+        minimumWidth: 82,
       },
       timeScale: {
         borderColor: 'rgba(148,163,184,0.12)',
@@ -211,47 +227,32 @@ function LightweightChartWorkspace({
         priceFormatter: (value) => formatPrice(value),
       },
       crosshair: {
-        vertLine: { color: 'rgba(226,232,240,0.18)', labelBackgroundColor: '#e2e8f0' },
-        horzLine: { color: 'rgba(226,232,240,0.18)', labelBackgroundColor: '#e2e8f0' },
+        mode: CrosshairMode.Normal,
+        vertLine: {
+          color: 'rgba(255,255,255,0.72)',
+          width: 1,
+          style: 2,
+          labelBackgroundColor: '#f8fafc',
+        },
+        horzLine: {
+          color: 'rgba(255,255,255,0.72)',
+          width: 1,
+          style: 2,
+          labelBackgroundColor: '#f8fafc',
+        },
       },
       handleScroll: true,
       handleScale: true,
     }
 
-    const priceChart = createChart(priceRef.current, {
+    const totalHeight = 460 + 120 + (rsiVisible ? 132 : 0) + (macdVisible ? 150 : 0) + 28
+
+    const chart = createChart(chartRef.current, {
       ...sharedOptions,
-      height: 460,
-      timeScale: {
-        ...sharedOptions.timeScale,
-        visible: false,
-      },
-    })
-    const volumeChart = createChart(volumeRef.current, {
-      ...sharedOptions,
-      height: 120,
-      timeScale: {
-        ...sharedOptions.timeScale,
-        visible: false,
-      },
-    })
-    const rsiChart = createChart(rsiRef.current, {
-      ...sharedOptions,
-      height: rsiVisible ? 132 : 0,
-      timeScale: {
-        ...sharedOptions.timeScale,
-        visible: false,
-      },
-    })
-    const macdChart = createChart(macdRef.current, {
-      ...sharedOptions,
-      height: macdVisible ? 150 : 0,
-      timeScale: {
-        ...sharedOptions.timeScale,
-        visible: true,
-      },
+      height: totalHeight,
     })
 
-    const priceSeries = priceChart.addSeries(CandlestickSeries, {
+    const priceSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#17c964',
       downColor: '#ef4444',
       borderVisible: chartType !== 'stroke',
@@ -262,38 +263,57 @@ function LightweightChartWorkspace({
       lastValueVisible: true,
       priceLineVisible: true,
       priceLineColor: '#9ca3af',
-    })
+    }, 0)
+    const sma200Series = chart.addSeries(LineSeries, {
+      color: '#ef4444',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    }, 0)
 
-    const volumeSeries = volumeChart.addSeries(HistogramSeries, {
+    const volumePaneIndex = 1
+    let nextPaneIndex = 2
+    const rsiPaneIndex = rsiVisible ? nextPaneIndex++ : null
+    const macdPaneIndex = macdVisible ? nextPaneIndex++ : null
+
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
       priceLineVisible: false,
       lastValueVisible: false,
       priceScaleId: 'right',
-    })
+    }, volumePaneIndex)
 
-    const rsiSeries = rsiChart.addSeries(LineSeries, {
-      color: '#facc15',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    })
+    const rsiSeries = rsiVisible
+      ? chart.addSeries(LineSeries, {
+        color: '#facc15',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }, rsiPaneIndex)
+      : null
 
-    const macdLine = macdChart.addSeries(LineSeries, {
-      color: '#22c55e',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    })
-    const signalLine = macdChart.addSeries(LineSeries, {
-      color: '#60a5fa',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    })
-    const histogramSeries = macdChart.addSeries(HistogramSeries, {
-      priceLineVisible: false,
-      lastValueVisible: false,
-    })
+    const macdLine = macdVisible
+      ? chart.addSeries(LineSeries, {
+        color: '#22c55e',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }, macdPaneIndex)
+      : null
+    const signalLine = macdVisible
+      ? chart.addSeries(LineSeries, {
+        color: '#60a5fa',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }, macdPaneIndex)
+      : null
+    const histogramSeries = macdVisible
+      ? chart.addSeries(HistogramSeries, {
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }, macdPaneIndex)
+      : null
 
     const candleData = points.map((point) => ({
       time: point.time,
@@ -304,31 +324,39 @@ function LightweightChartWorkspace({
     }))
 
     priceSeries.setData(candleData)
+    sma200Series.setData(computeProgressiveSma(candleData, 200))
 
     volumeSeries.setData(points.map((point) => ({
       time: point.time,
       value: point.volume,
       color: point.close >= point.open ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)',
     })))
-    volumeChart.priceScale('right').applyOptions({
+    chart.priceScale('right', volumePaneIndex).applyOptions({
       autoScale: true,
       scaleMargins: { top: 0.12, bottom: 0 },
       borderColor: 'rgba(148,163,184,0.12)',
+      minimumWidth: 82,
     })
 
-    rsiSeries.setData(computeRsi(candleData, 14))
+    const rsiData = computeRsi(candleData, 14)
+    if (rsiSeries) {
+      rsiSeries.setData(rsiData)
+    }
     const macd = computeMacd(candleData)
-    macdLine.setData(macd.macd)
-    signalLine.setData(macd.signal)
-    histogramSeries.setData(macd.histogram)
+    if (macdLine && signalLine && histogramSeries) {
+      macdLine.setData(macd.macd)
+      signalLine.setData(macd.signal)
+      histogramSeries.setData(macd.histogram)
+    }
 
-    const latestRsi = computeRsi(candleData, 14)
+    const latestRsi = rsiData
     const visibleRange = computeVisiblePriceRange(candleData, priceZoom)
     if (visibleRange) {
-      priceChart.priceScale('right').applyOptions({
+      chart.priceScale('right', 0).applyOptions({
         autoScale: false,
         mode: 0,
         scaleMargins: { top: 0.08, bottom: 0.08 },
+        minimumWidth: 82,
       })
       priceSeries.applyOptions({
         autoscaleInfoProvider: () => ({
@@ -340,66 +368,58 @@ function LightweightChartWorkspace({
       })
     }
 
-    rsiChart.priceScale('right').applyOptions({
-      autoScale: false,
-      mode: 0,
-      scaleMargins: { top: 0.08, bottom: 0.08 },
-    })
-    rsiSeries.createPriceLine({
-      price: 70,
-      color: 'rgba(239,68,68,0.55)',
-      lineWidth: 1,
-      lineStyle: 2,
-      axisLabelVisible: false,
-      title: '',
-    })
-    rsiSeries.createPriceLine({
-      price: 30,
-      color: 'rgba(34,197,94,0.55)',
-      lineWidth: 1,
-      lineStyle: 2,
-      axisLabelVisible: false,
-      title: '',
-    })
-    if (latestRsi.length > 0) {
+    if (rsiSeries && rsiPaneIndex != null) {
+      chart.priceScale('right', rsiPaneIndex).applyOptions({
+        autoScale: false,
+        mode: 0,
+        scaleMargins: { top: 0.08, bottom: 0.08 },
+        minimumWidth: 82,
+      })
       rsiSeries.createPriceLine({
-        price: latestRsi[latestRsi.length - 1].value,
-        color: '#facc15',
+        price: 70,
+        color: 'rgba(239,68,68,0.55)',
         lineWidth: 1,
-        lineStyle: 0,
-        axisLabelVisible: true,
-        title: 'RSI 14',
+        lineStyle: 2,
+        axisLabelVisible: false,
+        title: '',
+      })
+      rsiSeries.createPriceLine({
+        price: 30,
+        color: 'rgba(34,197,94,0.55)',
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: false,
+        title: '',
+      })
+      if (latestRsi.length > 0) {
+        rsiSeries.createPriceLine({
+          price: latestRsi[latestRsi.length - 1].value,
+          color: '#facc15',
+          lineWidth: 1,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: 'RSI 14',
+        })
+      }
+    }
+
+    if (macdPaneIndex != null) {
+      chart.priceScale('right', macdPaneIndex).applyOptions({
+        autoScale: true,
+        scaleMargins: { top: 0.1, bottom: 0.1 },
+        minimumWidth: 82,
       })
     }
 
-    const syncRange = (range) => {
-      if (!range) return
-      volumeChart.timeScale().setVisibleLogicalRange(range)
-      rsiChart.timeScale().setVisibleLogicalRange(range)
-      macdChart.timeScale().setVisibleLogicalRange(range)
-    }
-
-    priceChart.timeScale().subscribeVisibleLogicalRangeChange(syncRange)
-    priceChart.timeScale().fitContent()
-
-    const initialRange = priceChart.timeScale().getVisibleLogicalRange()
-    if (initialRange) {
-      syncRange(initialRange)
-    }
+    chart.timeScale().fitContent()
+    chart.panes()[0]?.setStretchFactor(5)
+    chart.panes()[volumePaneIndex]?.setStretchFactor(2)
+    if (rsiPaneIndex != null) chart.panes()[rsiPaneIndex]?.setStretchFactor(2)
+    if (macdPaneIndex != null) chart.panes()[macdPaneIndex]?.setStretchFactor(2)
 
     const resizeCharts = () => {
-      const priceWidth = priceRef.current?.clientWidth || 0
-      const volumeWidth = volumeRef.current?.clientWidth || 0
-      const rsiWidth = rsiRef.current?.clientWidth || 0
-      const macdWidth = macdRef.current?.clientWidth || 0
-      if (priceWidth) priceChart.applyOptions({ width: priceWidth })
-      if (volumeWidth) volumeChart.applyOptions({ width: volumeWidth })
-      if (rsiWidth) rsiChart.applyOptions({ width: rsiWidth, height: rsiVisible ? 132 : 0 })
-      if (macdWidth) macdChart.applyOptions({ width: macdWidth, height: macdVisible ? 150 : 0 })
-      const syncedRange = priceChart.timeScale().getVisibleLogicalRange()
-      if (syncedRange) {
-        syncRange(syncedRange)
-      }
+      const width = chartRef.current?.clientWidth || 0
+      if (width) chart.applyOptions({ width, height: totalHeight })
     }
 
     resizeCharts()
@@ -407,19 +427,13 @@ function LightweightChartWorkspace({
 
     return () => {
       window.removeEventListener('resize', resizeCharts)
-      priceChart.remove()
-      volumeChart.remove()
-      rsiChart.remove()
-      macdChart.remove()
+      chart.remove()
     }
   }, [chartType, macdVisible, points, priceZoom, rsiVisible])
 
   return (
     <div className="lw-layout">
-      <div ref={priceRef} className="lw-pane lw-price-pane" />
-      <div ref={volumeRef} className="lw-pane lw-volume-pane" />
-      {rsiVisible ? <div ref={rsiRef} className="lw-pane lw-rsi-pane" /> : null}
-      {macdVisible ? <div ref={macdRef} className="lw-pane lw-macd-pane" /> : null}
+      <div ref={chartRef} className="lw-pane lw-price-pane" />
     </div>
   )
 }
