@@ -430,6 +430,11 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
   const rsiSegments = []
   const highPivots = []
   const lowPivots = []
+  const minimumSignalGap = Math.max(18, (pivotLeft + pivotRight) * 2)
+  let lastBearishSignalIndex = -Infinity
+  let lastBullishSignalIndex = -Infinity
+  let lastBearishAnchorIndex = -Infinity
+  let lastBullishAnchorIndex = -Infinity
 
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index]
@@ -454,7 +459,11 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
           return priceDiverged && rsiDiverged && rsiFilterPassed
         })
 
-      if (bearishCandidate) {
+      if (
+        bearishCandidate
+        && (currentHighPivot.index - lastBearishSignalIndex) >= minimumSignalGap
+        && (bearishCandidate.index - lastBearishAnchorIndex) >= Math.max(8, pivotLeft + pivotRight)
+      ) {
         const bearishColor = style.lineColor || '#ef4444'
         markers.push({
           time: currentHighPivot.time,
@@ -477,6 +486,8 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
             { time: currentHighPivot.time, value: currentHighPivot.oscillator },
           ],
         })
+        lastBearishSignalIndex = currentHighPivot.index
+        lastBearishAnchorIndex = bearishCandidate.index
       }
 
       highPivots.push(currentHighPivot)
@@ -500,7 +511,11 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
           return priceDiverged && rsiDiverged && rsiFilterPassed
         })
 
-      if (bullishCandidate) {
+      if (
+        bullishCandidate
+        && (currentLowPivot.index - lastBullishSignalIndex) >= minimumSignalGap
+        && (bullishCandidate.index - lastBullishAnchorIndex) >= Math.max(8, pivotLeft + pivotRight)
+      ) {
         const bullishColor = style.bullLineColor || style.lineColor || '#22c55e'
         markers.push({
           time: currentLowPivot.time,
@@ -523,6 +538,8 @@ function detectBariyaoneDiv(points, options = {}, interval = '1D') {
             { time: currentLowPivot.time, value: currentLowPivot.oscillator },
           ],
         })
+        lastBullishSignalIndex = currentLowPivot.index
+        lastBullishAnchorIndex = bullishCandidate.index
       }
 
       lowPivots.push(currentLowPivot)
@@ -596,6 +613,15 @@ function LightweightChartWorkspace({
 }) {
   const chartRef = useRef(null)
   const overlayRef = useRef(null)
+  const visibleLogicalRangeRef = useRef(null)
+  const selectedToolRef = useRef(selectedTool)
+
+  useEffect(() => {
+    selectedToolRef.current = selectedTool
+    if (chartRef.current) {
+      chartRef.current.style.cursor = selectedTool === 'Crosshair' ? 'default' : 'crosshair'
+    }
+  }, [selectedTool])
 
   useEffect(() => {
     if (!chartRef.current) return undefined
@@ -966,7 +992,11 @@ function LightweightChartWorkspace({
       })
     }
 
-    chart.timeScale().fitContent()
+    if (visibleLogicalRangeRef.current) {
+      chart.timeScale().setVisibleLogicalRange(visibleLogicalRangeRef.current)
+    } else {
+      chart.timeScale().fitContent()
+    }
     chart.panes()[0]?.setStretchFactor(4)
     if (volumePaneIndex != null) chart.panes()[volumePaneIndex]?.setStretchFactor(2)
     if (rsiPaneIndex != null) chart.panes()[rsiPaneIndex]?.setStretchFactor(2)
@@ -979,6 +1009,7 @@ function LightweightChartWorkspace({
     }
 
     const handleVisibleRangeChange = (logicalRange) => {
+      visibleLogicalRangeRef.current = logicalRange
       onAxisChange?.(buildTopAxisTicks(points, logicalRange))
       syncOverlayBoxes()
     }
@@ -1007,7 +1038,7 @@ function LightweightChartWorkspace({
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange)
 
     const handleClick = (param) => {
-      if (!onChartAction || !selectedTool || !param?.point) return
+      if (!onChartAction || !selectedToolRef.current || !param?.point) return
       const time = normalizeChartTime(param.time)
       const hoveredCandle = param?.seriesData?.get(priceSeries)
       const fallbackCandle = findNearestCandle(candleData, time)
@@ -1016,7 +1047,7 @@ function LightweightChartWorkspace({
       const price = Number.isFinite(rawPrice) ? rawPrice : candle?.close
       if (!Number.isFinite(time) || !Number.isFinite(price)) return
       onChartAction({
-        tool: selectedTool,
+        tool: selectedToolRef.current,
         time,
         price,
         candle: candle ? {
@@ -1030,7 +1061,7 @@ function LightweightChartWorkspace({
     }
 
     chart.subscribeClick(handleClick)
-    chartRef.current.style.cursor = selectedTool === 'Crosshair' ? 'default' : 'crosshair'
+    chartRef.current.style.cursor = selectedToolRef.current === 'Crosshair' ? 'default' : 'crosshair'
 
     resizeCharts()
     window.addEventListener('resize', resizeCharts)
@@ -1047,12 +1078,13 @@ function LightweightChartWorkspace({
       rsiDivergenceLines.forEach((series) => chart.removeSeries(series))
       customDrawingSeries.forEach((series) => chart.removeSeries(series))
       customPriceLines.forEach((line) => priceSeries.removePriceLine(line))
+      visibleLogicalRangeRef.current = chart.timeScale().getVisibleLogicalRange()
       if (chartRef.current) {
         chartRef.current.style.cursor = 'default'
       }
       chart.remove()
     }
-  }, [bariyaoneConfig, bariyaoneVisible, chartType, crosshairWidth, horizontalLines, interval, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, selectedTool, trendLines, verticalLines, volumeVisible])
+  }, [bariyaoneConfig, bariyaoneVisible, chartType, crosshairWidth, horizontalLines, interval, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, trendLines, verticalLines, volumeVisible])
 
   return (
     <div className="lw-layout">
