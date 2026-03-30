@@ -414,6 +414,7 @@ function LightweightChartWorkspace({
           color: 'rgba(255,255,255,0.72)',
           width: 1,
           style: 2,
+          labelVisible: false,
           labelBackgroundColor: '#f8fafc',
         },
         horzLine: {
