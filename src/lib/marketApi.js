@@ -213,6 +213,24 @@ function aggregatePoints(points, interval) {
   return [...buckets.values()].sort((left, right) => left.time - right.time)
 }
 
+function withinIndianMarketHours(timestampSeconds) {
+  const date = new Date(timestampSeconds * 1000)
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const [hourText, minuteText] = formatter.format(date).split(':')
+  const minutes = (Number(hourText) * 60) + Number(minuteText)
+  return minutes >= (9 * 60) && minutes <= (15 * 60 + 30)
+}
+
+function applySessionFilter(points, interval) {
+  if (!['1m', '5m', '15m', '1H', '4H'].includes(interval)) return points
+  return points.filter((point) => withinIndianMarketHours(point.time))
+}
+
 export async function fetchBrokerStatus() {
   try {
     return await requestJson('/api/zerodha/status')
@@ -226,13 +244,13 @@ export async function fetchMarketHistory(symbol, range = 'YTD', interval = '1D')
     const payload = await requestJson(
       `/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(resolveHistoryRequestRange(range, interval))}&interval=${encodeURIComponent(INTERVAL_TO_API[interval] || 'day')}`,
     )
-    const points = aggregatePoints(normalizeHistory(payload), interval)
+    const points = aggregatePoints(applySessionFilter(normalizeHistory(payload), interval), interval)
     if (!points.length) throw new Error('No history points returned')
     return { source: payload?.source || 'live', points, error: '' }
   } catch (error) {
     return {
       source: 'fallback',
-      points: aggregatePoints(fallbackSeries(symbol, interval), interval),
+      points: aggregatePoints(applySessionFilter(fallbackSeries(symbol, interval), interval), interval),
       error: error.message || 'History unavailable',
     }
   }

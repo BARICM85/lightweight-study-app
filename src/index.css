@@ -262,6 +262,15 @@ button { cursor: pointer; }
   font-size: 12px;
 }
 
+.date-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.16);
+  background: rgba(255,255,255,0.03);
+  color: #fde68a;
+  font-weight: 600;
+}
+
 .ma-chip {
   padding: 2px 8px;
   border-radius: 999px;

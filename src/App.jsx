@@ -51,6 +51,18 @@ function formatMaybePrice(value) {
   return Number.isFinite(value) ? formatPrice(value) : 'n/a'
 }
 
+function formatChartDate(timestampSeconds) {
+  if (!Number.isFinite(timestampSeconds)) return 'n/a'
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestampSeconds * 1000))
+}
+
 function sourceLabel(source) {
   if (source === 'zerodha') return 'Zerodha live'
   if (source === 'yahoo') return 'Last trading day'
@@ -358,6 +370,7 @@ function LightweightChartWorkspace({
   rsiVisible,
   priceZoom,
   divergenceVisible,
+  onHoverChange,
 }) {
   const chartRef = useRef(null)
 
@@ -644,17 +657,38 @@ function LightweightChartWorkspace({
       if (width) chart.applyOptions({ width, height: totalHeight })
     }
 
+    const handleCrosshairMove = (param) => {
+      if (!onHoverChange) return
+      const hoveredData = param?.seriesData?.get(priceSeries)
+      const hoveredTime = param?.time
+      if (!hoveredData || hoveredTime == null) {
+        onHoverChange(null)
+        return
+      }
+      onHoverChange({
+        time: hoveredTime,
+        open: hoveredData.open,
+        high: hoveredData.high,
+        low: hoveredData.low,
+        close: hoveredData.close,
+      })
+    }
+
+    chart.subscribeCrosshairMove(handleCrosshairMove)
+
     resizeCharts()
     window.addEventListener('resize', resizeCharts)
 
     return () => {
       window.removeEventListener('resize', resizeCharts)
+      chart.unsubscribeCrosshairMove(handleCrosshairMove)
+      onHoverChange?.(null)
       divergenceMarkers.detach()
       priceDivergenceLines.forEach((series) => chart.removeSeries(series))
       rsiDivergenceLines.forEach((series) => chart.removeSeries(series))
       chart.remove()
     }
-  }, [chartType, divergenceVisible, macdVisible, points, priceZoom, rsiVisible])
+  }, [chartType, divergenceVisible, macdVisible, onHoverChange, points, priceZoom, rsiVisible])
 
   return (
     <div className="lw-layout">
@@ -679,6 +713,7 @@ function App() {
   const [macdVisible, setMacdVisible] = useState(true)
   const [priceZoom, setPriceZoom] = useState(1)
   const [divergenceVisible, setDivergenceVisible] = useState(true)
+  const [hoveredBar, setHoveredBar] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -719,12 +754,13 @@ function App() {
 
   const lastBar = historyState.points[historyState.points.length - 1]
   const stats = useMemo(() => ({
-    open: lastBar?.open ?? quoteState.price ?? 0,
-    high: lastBar?.high ?? quoteState.price ?? 0,
-    low: lastBar?.low ?? quoteState.price ?? 0,
-    close: lastBar?.close ?? quoteState.price ?? 0,
+    open: hoveredBar?.open ?? lastBar?.open ?? quoteState.price ?? 0,
+    high: hoveredBar?.high ?? lastBar?.high ?? quoteState.price ?? 0,
+    low: hoveredBar?.low ?? lastBar?.low ?? quoteState.price ?? 0,
+    close: hoveredBar?.close ?? lastBar?.close ?? quoteState.price ?? 0,
     change: Number.isFinite(quoteState.changePercent) ? quoteState.changePercent : 0,
-  }), [lastBar, quoteState])
+    time: hoveredBar?.time ?? lastBar?.time ?? null,
+  }), [hoveredBar, lastBar, quoteState])
   const sma20Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 20)), [historyState.points])
   const sma50Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 50)), [historyState.points])
   const sma200Value = useMemo(() => latestSeriesValue(computeProgressiveSma(historyState.points, 200)), [historyState.points])
@@ -816,6 +852,7 @@ function App() {
 
           <div className="stats-strip">
             <span className="symbol-label">{selectedSymbol.symbol}</span>
+            <span className="date-chip">{formatChartDate(stats.time)}</span>
             <span>O {formatPrice(stats.open)}</span>
             <span>H {formatPrice(stats.high)}</span>
             <span>L {formatPrice(stats.low)}</span>
@@ -908,6 +945,7 @@ function App() {
               macdVisible={macdVisible}
               priceZoom={priceZoom}
               divergenceVisible={divergenceVisible}
+              onHoverChange={setHoveredBar}
             />
           </section>
         </main>
