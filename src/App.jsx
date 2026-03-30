@@ -8,6 +8,7 @@ import {
   Minus,
   PencilLine,
   Search,
+  Settings2,
   Target,
   X,
 } from 'lucide-react'
@@ -358,7 +359,48 @@ function isPivotLow(points, index, left = 5, right = 5) {
   return true
 }
 
-function detectBarioneDivergence(points, options = {}) {
+function parseIntervalUnit(interval = '') {
+  const match = String(interval).trim().match(/^(\d+)([a-zA-Z]+)$/)
+  if (!match) return null
+  const value = Number(match[1])
+  const rawUnit = match[2].toLowerCase()
+  const unitMap = {
+    s: 'seconds',
+    sec: 'seconds',
+    second: 'seconds',
+    seconds: 'seconds',
+    m: 'minutes',
+    min: 'minutes',
+    minute: 'minutes',
+    minutes: 'minutes',
+    h: 'hours',
+    hr: 'hours',
+    hour: 'hours',
+    hours: 'hours',
+    d: 'days',
+    day: 'days',
+    days: 'days',
+    w: 'weeks',
+    week: 'weeks',
+    weeks: 'weeks',
+    mo: 'months',
+    mon: 'months',
+    month: 'months',
+    months: 'months',
+  }
+  return { value, unit: unitMap[rawUnit] || rawUnit }
+}
+
+function isBariyaoneVisibleForInterval(interval, visibility) {
+  if (!visibility?.ranges) return false
+  const parsed = parseIntervalUnit(interval)
+  if (!parsed) return true
+  const bucket = visibility[parsed.unit]
+  if (!bucket?.enabled) return false
+  return parsed.value >= bucket.min && parsed.value <= bucket.max
+}
+
+function detectBariyaoneDiv(points, options = {}, interval = '1D') {
   const {
     barsBack = 200,
     rsiPeriod = 14,
@@ -366,7 +408,13 @@ function detectBarioneDivergence(points, options = {}) {
     pivotLeft = 5,
     pivotRight = 5,
     useRsiFilter = true,
+    style = {},
+    visibility = {},
   } = options
+
+  if (!isBariyaoneVisibleForInterval(interval, visibility)) {
+    return { markers: [], priceSegments: [], rsiSegments: [] }
+  }
 
   if (points.length < Math.max(barsBack, momentumPeriod + rsiPeriod + pivotLeft + pivotRight + 2)) {
     return { markers: [], priceSegments: [], rsiSegments: [] }
@@ -406,22 +454,23 @@ function detectBarioneDivergence(points, options = {}) {
         )
 
         if (bearish) {
+          const bearishColor = style.lineColor || '#ef4444'
           markers.push({
             time: currentHighPivot.time,
             position: 'aboveBar',
             shape: 'arrowDown',
-            color: '#ef4444',
-            text: 'Barione Bear',
+            color: bearishColor,
+            text: 'Bariyaone Bear',
           })
           priceSegments.push({
-            color: '#ef4444',
+            color: bearishColor,
             points: [
               { time: previousHighPivot.time, value: previousHighPivot.price },
               { time: currentHighPivot.time, value: currentHighPivot.price },
             ],
           })
           rsiSegments.push({
-            color: '#ef4444',
+            color: bearishColor,
             points: [
               { time: previousHighPivot.time, value: previousHighPivot.oscillator },
               { time: currentHighPivot.time, value: currentHighPivot.oscillator },
@@ -451,22 +500,23 @@ function detectBarioneDivergence(points, options = {}) {
         )
 
         if (bullish) {
+          const bullishColor = style.bullLineColor || style.lineColor || '#22c55e'
           markers.push({
             time: currentLowPivot.time,
             position: 'belowBar',
             shape: 'arrowUp',
-            color: '#22c55e',
-            text: 'Barione Bull',
+            color: bullishColor,
+            text: 'Bariyaone Bull',
           })
           priceSegments.push({
-            color: '#22c55e',
+            color: bullishColor,
             points: [
               { time: previousLowPivot.time, value: previousLowPivot.price },
               { time: currentLowPivot.time, value: currentLowPivot.price },
             ],
           })
           rsiSegments.push({
-            color: '#22c55e',
+            color: bullishColor,
             points: [
               { time: previousLowPivot.time, value: previousLowPivot.oscillator },
               { time: currentLowPivot.time, value: currentLowPivot.oscillator },
@@ -499,6 +549,31 @@ function computeVisiblePriceRange(points, zoomFactor = 1) {
   }
 }
 
+const DEFAULT_BARIYAONE_DIV = {
+  barsBack: 200,
+  rsiPeriod: 14,
+  momentumPeriod: 20,
+  pivotLeft: 5,
+  pivotRight: 5,
+  useRsiFilter: true,
+  style: {
+    showLines: true,
+    lineColor: '#ff4d40',
+    bullLineColor: '#22c55e',
+    inputsInStatusLine: true,
+  },
+  visibility: {
+    ticks: true,
+    seconds: { enabled: true, min: 1, max: 59 },
+    minutes: { enabled: true, min: 1, max: 59 },
+    hours: { enabled: true, min: 1, max: 24 },
+    days: { enabled: true, min: 1, max: 366 },
+    weeks: { enabled: true, min: 1, max: 52 },
+    months: { enabled: true, min: 1, max: 12 },
+    ranges: true,
+  },
+}
+
 function LightweightChartWorkspace({
   points,
   chartType,
@@ -507,7 +582,9 @@ function LightweightChartWorkspace({
   rsiVisible,
   priceZoom,
   crosshairWidth,
-  divergenceVisible,
+  bariyaoneVisible,
+  bariyaoneConfig,
+  interval,
   onHoverChange,
   onAxisChange,
   selectedTool,
@@ -787,26 +864,13 @@ function LightweightChartWorkspace({
       })
     }
 
-    const divergence = detectBarioneDivergence(candleData)
+    const divergence = detectBariyaoneDiv(candleData, bariyaoneConfig, interval)
     const priceDivergenceLines = []
     const rsiDivergenceLines = []
-    if (divergenceVisible) {
+    if (bariyaoneVisible) {
       divergenceMarkers.setMarkers(divergence.markers)
-      divergence.priceSegments.forEach((segment) => {
-        const line = chart.addSeries(LineSeries, {
-          color: segment.color,
-          lineWidth: 2,
-          lineStyle: 0,
-          crosshairMarkerVisible: false,
-          lastValueVisible: false,
-          priceLineVisible: false,
-        }, 0)
-        line.setData(segment.points)
-        priceDivergenceLines.push(line)
-      })
-
-      if (rsiSeries && rsiPaneIndex != null) {
-        divergence.rsiSegments.forEach((segment) => {
+      if (bariyaoneConfig?.style?.showLines) {
+        divergence.priceSegments.forEach((segment) => {
           const line = chart.addSeries(LineSeries, {
             color: segment.color,
             lineWidth: 2,
@@ -814,10 +878,25 @@ function LightweightChartWorkspace({
             crosshairMarkerVisible: false,
             lastValueVisible: false,
             priceLineVisible: false,
-          }, rsiPaneIndex)
+          }, 0)
           line.setData(segment.points)
-          rsiDivergenceLines.push(line)
+          priceDivergenceLines.push(line)
         })
+
+        if (rsiSeries && rsiPaneIndex != null) {
+          divergence.rsiSegments.forEach((segment) => {
+            const line = chart.addSeries(LineSeries, {
+              color: segment.color,
+              lineWidth: 2,
+              lineStyle: 0,
+              crosshairMarkerVisible: false,
+              lastValueVisible: false,
+              priceLineVisible: false,
+            }, rsiPaneIndex)
+            line.setData(segment.points)
+            rsiDivergenceLines.push(line)
+          })
+        }
       }
     } else {
       divergenceMarkers.setMarkers([])
@@ -973,7 +1052,7 @@ function LightweightChartWorkspace({
       }
       chart.remove()
     }
-  }, [chartType, crosshairWidth, divergenceVisible, horizontalLines, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, selectedTool, trendLines, verticalLines, volumeVisible])
+  }, [bariyaoneConfig, bariyaoneVisible, chartType, crosshairWidth, horizontalLines, interval, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, selectedTool, trendLines, verticalLines, volumeVisible])
 
   return (
     <div className="lw-layout">
@@ -1009,7 +1088,10 @@ function App() {
   const [rsiVisible, setRsiVisible] = useState(true)
   const [macdVisible, setMacdVisible] = useState(true)
   const [priceZoom, setPriceZoom] = useState(1)
-  const [divergenceVisible, setDivergenceVisible] = useState(true)
+  const [bariyaoneVisible, setBariyaoneVisible] = useState(true)
+  const [bariyaoneConfig, setBariyaoneConfig] = useState(DEFAULT_BARIYAONE_DIV)
+  const [bariyaoneSettingsOpen, setBariyaoneSettingsOpen] = useState(false)
+  const [bariyaoneTab, setBariyaoneTab] = useState('inputs')
   const [hoveredBar, setHoveredBar] = useState(null)
   const [topAxisTicks, setTopAxisTicks] = useState([])
   const [trendColor, setTrendColor] = useState('#22c55e')
@@ -1195,6 +1277,18 @@ function App() {
     if (selectedTool === 'Pick') return 'Pick mode: click a candle to pin its OHLC values above.'
     return 'Crosshair mode: move over candles to inspect price and date.'
   }, [selectedTool, trendDraft])
+  const bariyaoneStatusText = useMemo(() => (
+    bariyaoneConfig.style.inputsInStatusLine
+      ? `Bariyaone Div B:${bariyaoneConfig.barsBack} RSI:${bariyaoneConfig.rsiPeriod} MOM:${bariyaoneConfig.momentumPeriod}`
+      : ''
+  ), [bariyaoneConfig])
+
+  const updateBariyaoneConfig = useCallback((updater) => {
+    setBariyaoneConfig((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater
+      return next
+    })
+  }, [])
 
   return (
     <div className="app-shell">
@@ -1413,10 +1507,15 @@ function App() {
                   <span>MACD</span>
                   {macdVisible ? <Eye size={13} /> : <EyeOff size={13} />}
                 </button>
-                <button type="button" className={`indicator-chip ${divergenceVisible ? 'active' : ''}`} onClick={() => setDivergenceVisible((value) => !value)}>
-                  <span>Barione Div</span>
-                  {divergenceVisible ? <Eye size={13} /> : <EyeOff size={13} />}
-                </button>
+                <div className="indicator-chip-group">
+                  <button type="button" className={`indicator-chip ${bariyaoneVisible ? 'active' : ''}`} onClick={() => setBariyaoneVisible((value) => !value)}>
+                    <span>Bariyaone Div</span>
+                    {bariyaoneVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                  </button>
+                  <button type="button" className="indicator-settings-btn" onClick={() => setBariyaoneSettingsOpen(true)} title="Bariyaone Div settings">
+                    <Settings2 size={13} />
+                  </button>
+                </div>
               </div>
               <div className="chart-ohlc-box">
                 <div className="stats-strip floating-stats">
@@ -1432,6 +1531,7 @@ function App() {
                   <span className="ma-inline ma50">S50 {formatMaybePrice(sma50Value)}</span>
                   <span className="ma-inline ma200">S200 {formatMaybePrice(sma200Value)}</span>
                 </div>
+                {bariyaoneStatusText ? <div className="indicator-status-line">{bariyaoneStatusText}</div> : null}
               </div>
             </div>
             <LightweightChartWorkspace
@@ -1442,7 +1542,9 @@ function App() {
               macdVisible={macdVisible}
               priceZoom={priceZoom}
               crosshairWidth={crosshairWidth}
-              divergenceVisible={divergenceVisible}
+              bariyaoneVisible={bariyaoneVisible}
+              bariyaoneConfig={bariyaoneConfig}
+              interval={interval}
               onHoverChange={setHoveredBar}
               onAxisChange={setTopAxisTicks}
               selectedTool={selectedTool}
@@ -1460,6 +1562,147 @@ function App() {
           </section>
         </main>
       </section>
+      {bariyaoneSettingsOpen ? (
+        <div className="indicator-modal-backdrop" onClick={() => setBariyaoneSettingsOpen(false)}>
+          <div className="indicator-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="indicator-modal-tabs">
+              {[
+                { key: 'inputs', label: 'Inputs' },
+                { key: 'style', label: 'Style' },
+                { key: 'visibility', label: 'Visibility' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`indicator-tab ${bariyaoneTab === tab.key ? 'active' : ''}`}
+                  onClick={() => setBariyaoneTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {bariyaoneTab === 'inputs' ? (
+              <div className="indicator-form-grid">
+                <label className="indicator-field">
+                  <span>Bars Back</span>
+                  <input type="number" value={bariyaoneConfig.barsBack} onChange={(event) => updateBariyaoneConfig((current) => ({ ...current, barsBack: Number(event.target.value) || 0 }))} />
+                </label>
+                <label className="indicator-field">
+                  <span>RSI Period</span>
+                  <input type="number" value={bariyaoneConfig.rsiPeriod} onChange={(event) => updateBariyaoneConfig((current) => ({ ...current, rsiPeriod: Number(event.target.value) || 0 }))} />
+                </label>
+                <label className="indicator-field">
+                  <span>Momentum Period</span>
+                  <input type="number" value={bariyaoneConfig.momentumPeriod} onChange={(event) => updateBariyaoneConfig((current) => ({ ...current, momentumPeriod: Number(event.target.value) || 0 }))} />
+                </label>
+              </div>
+            ) : null}
+
+            {bariyaoneTab === 'style' ? (
+              <div className="indicator-settings-section">
+                <label className="indicator-check">
+                  <input
+                    type="checkbox"
+                    checked={bariyaoneConfig.style.showLines}
+                    onChange={(event) => updateBariyaoneConfig((current) => ({ ...current, style: { ...current.style, showLines: event.target.checked } }))}
+                  />
+                  <span>Lines</span>
+                  <input
+                    type="color"
+                    value={bariyaoneConfig.style.lineColor}
+                    onChange={(event) => updateBariyaoneConfig((current) => ({ ...current, style: { ...current.style, lineColor: event.target.value } }))}
+                  />
+                </label>
+                <label className="indicator-check">
+                  <input
+                    type="checkbox"
+                    checked={bariyaoneConfig.style.inputsInStatusLine}
+                    onChange={(event) => updateBariyaoneConfig((current) => ({ ...current, style: { ...current.style, inputsInStatusLine: event.target.checked } }))}
+                  />
+                  <span>Inputs in status line</span>
+                </label>
+              </div>
+            ) : null}
+
+            {bariyaoneTab === 'visibility' ? (
+              <div className="indicator-visibility-grid">
+                {[
+                  ['ticks', 'Ticks'],
+                  ['seconds', 'Seconds'],
+                  ['minutes', 'Minutes'],
+                  ['hours', 'Hours'],
+                  ['days', 'Days'],
+                  ['weeks', 'Weeks'],
+                  ['months', 'Months'],
+                  ['ranges', 'Ranges'],
+                ].map(([key, label]) => (
+                  <div key={key} className="indicator-visibility-row">
+                    <label className="indicator-check">
+                      <input
+                        type="checkbox"
+                        checked={key === 'ranges' ? bariyaoneConfig.visibility.ranges : key === 'ticks' ? bariyaoneConfig.visibility.ticks : bariyaoneConfig.visibility[key].enabled}
+                        onChange={(event) => {
+                          if (key === 'ranges' || key === 'ticks') {
+                            updateBariyaoneConfig((current) => ({
+                              ...current,
+                              visibility: { ...current.visibility, [key]: event.target.checked },
+                            }))
+                            return
+                          }
+                          updateBariyaoneConfig((current) => ({
+                            ...current,
+                            visibility: {
+                              ...current.visibility,
+                              [key]: { ...current.visibility[key], enabled: event.target.checked },
+                            },
+                          }))
+                        }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                    {key !== 'ranges' && key !== 'ticks' ? (
+                      <div className="indicator-range-inputs">
+                        <input
+                          type="number"
+                          value={bariyaoneConfig.visibility[key].min}
+                          onChange={(event) => updateBariyaoneConfig((current) => ({
+                            ...current,
+                            visibility: {
+                              ...current.visibility,
+                              [key]: { ...current.visibility[key], min: Number(event.target.value) || 0 },
+                            },
+                          }))}
+                        />
+                        <span>to</span>
+                        <input
+                          type="number"
+                          value={bariyaoneConfig.visibility[key].max}
+                          onChange={(event) => updateBariyaoneConfig((current) => ({
+                            ...current,
+                            visibility: {
+                              ...current.visibility,
+                              [key]: { ...current.visibility[key], max: Number(event.target.value) || 0 },
+                            },
+                          }))}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="indicator-modal-actions">
+              <button type="button" className="indicator-action subtle" onClick={() => setBariyaoneConfig(DEFAULT_BARIYAONE_DIV)}>Defaults</button>
+              <div className="indicator-action-group">
+                <button type="button" className="indicator-action subtle" onClick={() => setBariyaoneSettingsOpen(false)}>Cancel</button>
+                <button type="button" className="indicator-action primary" onClick={() => setBariyaoneSettingsOpen(false)}>Ok</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

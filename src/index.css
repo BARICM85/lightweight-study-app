@@ -603,6 +603,23 @@ button { cursor: pointer; }
   color: #e0f2fe;
 }
 
+.indicator-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.indicator-settings-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 999px;
+  background: rgba(15,23,42,0.78);
+  color: #cbd5e1;
+}
+
 .chart-ohlc-box {
   display: flex;
   flex-direction: column;
@@ -612,6 +629,12 @@ button { cursor: pointer; }
   border: 1px solid rgba(148,163,184,0.14);
   border-radius: 16px;
   background: rgba(11,17,27,0.84);
+}
+
+.indicator-status-line {
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: right;
 }
 
 .lw-layout {
@@ -718,6 +741,150 @@ button { cursor: pointer; }
   font-size: 11px;
   color: #94a3b8;
   padding: 2px 2px 0;
+}
+
+.indicator-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(2,6,12,0.72);
+}
+
+.indicator-modal {
+  width: min(420px, calc(100vw - 24px));
+  border: 1px solid rgba(148,163,184,0.16);
+  border-radius: 18px;
+  background: #171717;
+  color: #f8fafc;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.42);
+  overflow: hidden;
+}
+
+.indicator-modal-tabs {
+  display: flex;
+  gap: 20px;
+  padding: 14px 18px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.indicator-tab {
+  position: relative;
+  padding: 0 0 12px;
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.indicator-tab.active {
+  color: #ffffff;
+}
+
+.indicator-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.85);
+}
+
+.indicator-form-grid,
+.indicator-settings-section,
+.indicator-visibility-grid {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.indicator-field {
+  display: grid;
+  gap: 8px;
+  color: #e2e8f0;
+}
+
+.indicator-field input,
+.indicator-range-inputs input {
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(148,163,184,0.22);
+  border-radius: 8px;
+  background: #202020;
+  color: #ffffff;
+}
+
+.indicator-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #f8fafc;
+}
+
+.indicator-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+}
+
+.indicator-check input[type='color'] {
+  width: 56px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(148,163,184,0.22);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.indicator-visibility-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.indicator-range-inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.indicator-range-inputs input {
+  width: 72px;
+}
+
+.indicator-range-inputs span {
+  color: #94a3b8;
+}
+
+.indicator-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 18px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.indicator-action-group {
+  display: inline-flex;
+  gap: 10px;
+}
+
+.indicator-action {
+  min-width: 76px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(148,163,184,0.22);
+  background: transparent;
+  color: #f8fafc;
+}
+
+.indicator-action.primary {
+  background: #f8fafc;
+  color: #111827;
 }
 
 .up {
