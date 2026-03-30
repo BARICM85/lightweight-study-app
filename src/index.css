@@ -27,7 +27,7 @@ button { cursor: pointer; }
   min-height: 100vh;
   max-width: 1520px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 10px 14px;
 }
 
 .app-header,
@@ -43,9 +43,9 @@ button { cursor: pointer; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 16px;
+  padding: 8px 14px;
   border-radius: 22px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .brand {
@@ -55,8 +55,8 @@ button { cursor: pointer; }
 }
 
 .brand-mark {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border-radius: 14px;
@@ -66,7 +66,7 @@ button { cursor: pointer; }
 
 .eyebrow {
   margin: 0 0 2px;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: #94a3b8;
@@ -74,7 +74,7 @@ button { cursor: pointer; }
 
 .app-header h1 {
   margin: 0;
-  font-size: 21px;
+  font-size: 17px;
   line-height: 1.1;
   color: #f8fafc;
 }
@@ -124,21 +124,21 @@ button { cursor: pointer; }
 .workspace {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
-  gap: 14px;
+  gap: 10px;
   align-items: start;
 }
 
 .left-tools {
-  padding: 10px 8px;
+  padding: 8px 6px;
   border-radius: 24px;
 }
 
 .tool-btn {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  margin: 0 auto 10px;
+  margin: 0 auto 8px;
 }
 
 .tool-btn.active,
@@ -150,13 +150,13 @@ button { cursor: pointer; }
 
 .chart-panel {
   border-radius: 28px;
-  padding: 12px;
+  padding: 10px;
 }
 
 .top-bar {
   display: grid;
   grid-template-columns: minmax(320px, 1fr) auto;
-  gap: 12px;
+  gap: 10px;
   align-items: start;
 }
 
@@ -170,8 +170,8 @@ button { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 44px;
-  padding: 0 14px;
+  height: 38px;
+  padding: 0 12px;
   border: 1px solid rgba(148,163,184,0.14);
   border-radius: 16px;
   background: rgba(15,23,42,0.82);
@@ -236,15 +236,15 @@ button { cursor: pointer; }
 }
 
 .symbol-strip {
-  min-height: 44px;
-  padding: 10px 12px;
+  min-height: 38px;
+  padding: 8px 10px;
   border: 1px solid rgba(148,163,184,0.12);
   border-radius: 16px;
   background: rgba(15,23,42,0.58);
 }
 
 .symbol-strip strong {
-  font-size: 16px;
+  font-size: 14px;
   color: #f8fafc;
 }
 
@@ -254,25 +254,34 @@ button { cursor: pointer; }
 
 .stats-strip,
 .control-row {
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .stats-strip {
   color: #cbd5e1;
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.date-chip {
-  padding: 2px 8px;
-  border-radius: 999px;
+.top-date-axis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px 7px;
   border: 1px solid rgba(148,163,184,0.16);
-  background: rgba(255,255,255,0.03);
-  color: #fde68a;
+  border-radius: 12px;
+  background: rgba(15,23,42,0.42);
+  color: #e2e8f0;
+  font-size: 11px;
   font-weight: 600;
 }
 
+.top-date-axis span {
+  text-align: center;
+}
+
 .ma-chip {
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   border: 1px solid rgba(148,163,184,0.14);
   background: rgba(15,23,42,0.58);
@@ -299,7 +308,8 @@ button { cursor: pointer; }
 }
 
 .chip {
-  padding: 8px 12px;
+  padding: 6px 10px;
+  font-size: 12px;
   line-height: 1;
 }
 
@@ -314,12 +324,12 @@ button { cursor: pointer; }
 }
 
 .chart-card {
-  margin-top: 12px;
+  margin-top: 8px;
   border: 1px solid rgba(148,163,184,0.12);
   border-radius: 24px;
   overflow: hidden;
   background: #0b111b;
-  padding: 10px;
+  padding: 8px;
 }
 
 .pane-legend {
@@ -327,9 +337,9 @@ button { cursor: pointer; }
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 0 2px 10px;
+  padding: 0 2px 6px;
   border-bottom: 1px solid rgba(148,163,184,0.18);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .pane-chip {

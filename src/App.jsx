@@ -51,7 +51,16 @@ function formatMaybePrice(value) {
   return Number.isFinite(value) ? formatPrice(value) : 'n/a'
 }
 
-function formatChartDate(timestampSeconds) {
+function normalizeChartTime(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (value && typeof value === 'object' && 'year' in value && 'month' in value && 'day' in value) {
+    return Math.floor(Date.UTC(value.year, value.month - 1, value.day) / 1000)
+  }
+  return null
+}
+
+function formatChartDate(rawTime) {
+  const timestampSeconds = normalizeChartTime(rawTime)
   if (!Number.isFinite(timestampSeconds)) return 'n/a'
   return new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
@@ -60,6 +69,16 @@ function formatChartDate(timestampSeconds) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+  }).format(new Date(timestampSeconds * 1000))
+}
+
+function formatAxisDate(rawTime) {
+  const timestampSeconds = normalizeChartTime(rawTime)
+  if (!Number.isFinite(timestampSeconds)) return ''
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'short',
   }).format(new Date(timestampSeconds * 1000))
 }
 
@@ -102,6 +121,22 @@ function computeProgressiveSma(points, length) {
 function latestSeriesValue(series) {
   if (!series.length) return null
   return series[series.length - 1]?.value ?? null
+}
+
+function buildTopAxisTicks(points, logicalRange, tickCount = 5) {
+  if (!points.length) return []
+  const fallbackIndexes = [0, Math.floor(points.length * 0.25), Math.floor(points.length * 0.5), Math.floor(points.length * 0.75), points.length - 1]
+  const indexes = logicalRange
+    ? Array.from({ length: tickCount }, (_, idx) => {
+      const ratio = tickCount === 1 ? 0 : idx / (tickCount - 1)
+      const rawIndex = logicalRange.from + ((logicalRange.to - logicalRange.from) * ratio)
+      return Math.max(0, Math.min(points.length - 1, Math.round(rawIndex)))
+    })
+    : fallbackIndexes
+  return [...new Set(indexes)].map((index) => ({
+    index,
+    label: formatAxisDate(points[index]?.time),
+  }))
 }
 
 function computeRsi(points, period = 14) {
@@ -371,6 +406,7 @@ function LightweightChartWorkspace({
   priceZoom,
   divergenceVisible,
   onHoverChange,
+  onAxisChange,
 }) {
   const chartRef = useRef(null)
 
@@ -385,7 +421,7 @@ function LightweightChartWorkspace({
         panes: {
           separatorColor: 'rgba(148,163,184,0.28)',
           separatorHoverColor: 'rgba(148,163,184,0.36)',
-          enableResize: false,
+          enableResize: true,
         },
       },
       grid: {
@@ -399,10 +435,11 @@ function LightweightChartWorkspace({
       },
       timeScale: {
         borderColor: 'rgba(148,163,184,0.12)',
+        visible: false,
         timeVisible: true,
         secondsVisible: false,
         ticksVisible: true,
-        minimumHeight: 28,
+        minimumHeight: 22,
         tickMarkMaxCharacterLength: 12,
       },
       localization: {
@@ -428,7 +465,7 @@ function LightweightChartWorkspace({
       handleScale: true,
     }
 
-    const totalHeight = 460 + 120 + (rsiVisible ? 132 : 0) + (macdVisible ? 150 : 0) + 28
+    const totalHeight = 430 + 92 + (rsiVisible ? 104 : 0) + (macdVisible ? 116 : 0) + 24
 
     const chart = createChart(chartRef.current, {
       ...sharedOptions,
@@ -666,10 +703,14 @@ function LightweightChartWorkspace({
       if (width) chart.applyOptions({ width, height: totalHeight })
     }
 
+    const handleVisibleRangeChange = (logicalRange) => {
+      onAxisChange?.(buildTopAxisTicks(points, logicalRange))
+    }
+
     const handleCrosshairMove = (param) => {
       if (!onHoverChange) return
       const hoveredData = param?.seriesData?.get(priceSeries)
-      const hoveredTime = param?.time
+      const hoveredTime = normalizeChartTime(param?.time)
       if (!hoveredData || hoveredTime == null) {
         onHoverChange(null)
         return
@@ -684,20 +725,24 @@ function LightweightChartWorkspace({
     }
 
     chart.subscribeCrosshairMove(handleCrosshairMove)
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange)
 
     resizeCharts()
     window.addEventListener('resize', resizeCharts)
+    handleVisibleRangeChange(chart.timeScale().getVisibleLogicalRange())
 
     return () => {
       window.removeEventListener('resize', resizeCharts)
       chart.unsubscribeCrosshairMove(handleCrosshairMove)
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange)
       onHoverChange?.(null)
+      onAxisChange?.([])
       divergenceMarkers.detach()
       priceDivergenceLines.forEach((series) => chart.removeSeries(series))
       rsiDivergenceLines.forEach((series) => chart.removeSeries(series))
       chart.remove()
     }
-  }, [chartType, divergenceVisible, macdVisible, onHoverChange, points, priceZoom, rsiVisible])
+  }, [chartType, divergenceVisible, macdVisible, onAxisChange, onHoverChange, points, priceZoom, rsiVisible])
 
   return (
     <div className="lw-layout">
@@ -723,6 +768,7 @@ function App() {
   const [priceZoom, setPriceZoom] = useState(1)
   const [divergenceVisible, setDivergenceVisible] = useState(true)
   const [hoveredBar, setHoveredBar] = useState(null)
+  const [topAxisTicks, setTopAxisTicks] = useState([])
 
   useEffect(() => {
     let active = true
@@ -773,6 +819,10 @@ function App() {
   const sma20Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 20)), [historyState.points])
   const sma50Value = useMemo(() => latestSeriesValue(computeSma(historyState.points, 50)), [historyState.points])
   const sma200Value = useMemo(() => latestSeriesValue(computeProgressiveSma(historyState.points, 200)), [historyState.points])
+  const resolvedTopAxisTicks = useMemo(
+    () => (topAxisTicks.length ? topAxisTicks : buildTopAxisTicks(historyState.points, null)),
+    [historyState.points, topAxisTicks],
+  )
 
   return (
     <div className="app-shell">
@@ -940,6 +990,11 @@ function App() {
           </div>
 
           <section className="chart-card">
+            <div className="top-date-axis" aria-label="Top date axis">
+              {resolvedTopAxisTicks.map((tick) => (
+                <span key={`${tick.index}-${tick.label}`}>{tick.label}</span>
+              ))}
+            </div>
             <div className="pane-legend">
               <span className="pane-chip">Price</span>
               <span className="pane-chip">Volume</span>
@@ -955,6 +1010,7 @@ function App() {
               priceZoom={priceZoom}
               divergenceVisible={divergenceVisible}
               onHoverChange={setHoveredBar}
+              onAxisChange={setTopAxisTicks}
             />
           </section>
         </main>
