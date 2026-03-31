@@ -1595,7 +1595,7 @@ function App() {
           </section>
 
           <section className="chart-card">
-            <div className="chart-top-overlay">
+            <div className="chart-top-left">
               <div className="chart-indicator-strip">
                 <button type="button" className={`indicator-chip ${volumeVisible ? 'active' : ''}`} onClick={() => setVolumeVisible((value) => !value)}>
                   <span>VOL</span>
@@ -1619,6 +1619,8 @@ function App() {
                   </button>
                 </div>
               </div>
+            </div>
+            <div className="chart-top-right">
               <div className="chart-ohlc-box">
                 <div className="stats-strip floating-stats">
                   <span className="symbol-label">{selectedSymbol.symbol}</span>
