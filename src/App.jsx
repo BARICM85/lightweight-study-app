@@ -658,7 +658,7 @@ function LightweightChartWorkspace({
       rightPriceScale: {
         borderColor: 'rgba(148,163,184,0.12)',
         scaleMargins: { top: 0.04, bottom: 0.04 },
-        minimumWidth: 94,
+        minimumWidth: 120,
       },
       timeScale: {
         borderColor: 'rgba(148,163,184,0.12)',
@@ -668,7 +668,7 @@ function LightweightChartWorkspace({
         ticksVisible: true,
         minimumHeight: 22,
         tickMarkMaxCharacterLength: 12,
-        rightOffset: 10,
+        rightOffset: 14,
       },
       localization: {
         priceFormatter: (value) => formatPrice(value),
@@ -693,7 +693,7 @@ function LightweightChartWorkspace({
       handleScale: true,
     }
 
-    const totalHeight = 360 + (volumeVisible ? 88 : 0) + (rsiVisible ? 96 : 0) + (macdVisible ? 108 : 0) + 20
+    const totalHeight = 284 + (volumeVisible ? 56 : 0) + (rsiVisible ? 70 : 0) + (macdVisible ? 78 : 0) + 8
 
     const chart = createChart(chartRef.current, {
       ...sharedOptions,
@@ -820,11 +820,15 @@ function LightweightChartWorkspace({
       close: point.close,
     }))
 
+    const sma20Data = computeSma(candleData, 20)
+    const sma50Data = computeSma(candleData, 50)
+    const sma200Data = computeProgressiveSma(candleData, 200)
+
     priceSeries.setData(candleData)
     closeLineSeries.setData(isLineChart ? candleData.map((point) => ({ time: point.time, value: point.close })) : [])
-    sma20Series.setData(computeSma(candleData, 20))
-    sma50Series.setData(computeSma(candleData, 50))
-    sma200Series.setData(computeProgressiveSma(candleData, 200))
+    sma20Series.setData(sma20Data)
+    sma50Series.setData(sma50Data)
+    sma200Series.setData(sma200Data)
 
     if (volumeSeries && volumePaneIndex != null) {
       volumeSeries.setData(points.map((point) => ({
@@ -836,7 +840,7 @@ function LightweightChartWorkspace({
           autoScale: true,
           scaleMargins: { top: 0.12, bottom: 0 },
           borderColor: 'rgba(148,163,184,0.12)',
-          minimumWidth: 94,
+          minimumWidth: 120,
         })
     }
 
@@ -858,7 +862,7 @@ function LightweightChartWorkspace({
         autoScale: false,
         mode: 0,
         scaleMargins: { top: 0.08, bottom: 0.08 },
-        minimumWidth: 94,
+        minimumWidth: 120,
       })
       priceSeries.applyOptions({
         autoscaleInfoProvider: () => ({
@@ -875,7 +879,7 @@ function LightweightChartWorkspace({
         autoScale: false,
         mode: 0,
         scaleMargins: { top: 0.08, bottom: 0.08 },
-        minimumWidth: 94,
+        minimumWidth: 120,
       })
       rsiSeries.createPriceLine({
         price: 70,
@@ -909,7 +913,7 @@ function LightweightChartWorkspace({
       chart.priceScale('right', macdPaneIndex).applyOptions({
         autoScale: true,
         scaleMargins: { top: 0.1, bottom: 0.1 },
-        minimumWidth: 94,
+        minimumWidth: 110,
       })
     }
 
@@ -984,10 +988,10 @@ function LightweightChartWorkspace({
     } else {
       chart.timeScale().fitContent()
     }
-    chart.panes()[0]?.setStretchFactor(4)
-    if (volumePaneIndex != null) chart.panes()[volumePaneIndex]?.setStretchFactor(2)
-    if (rsiPaneIndex != null) chart.panes()[rsiPaneIndex]?.setStretchFactor(2)
-    if (macdPaneIndex != null) chart.panes()[macdPaneIndex]?.setStretchFactor(2)
+    chart.panes()[0]?.setStretchFactor(6)
+    if (volumePaneIndex != null) chart.panes()[volumePaneIndex]?.setStretchFactor(1)
+    if (rsiPaneIndex != null) chart.panes()[rsiPaneIndex]?.setStretchFactor(1)
+    if (macdPaneIndex != null) chart.panes()[macdPaneIndex]?.setStretchFactor(1)
 
     const resizeCharts = () => {
       const width = chartRef.current?.clientWidth || 0
@@ -1001,25 +1005,23 @@ function LightweightChartWorkspace({
       syncOverlayBoxes()
     }
 
-    const handleCrosshairMove = (param) => {
+    const updateHoverFromPoint = ({ pointX, pointY, logicalIndex = null, hintedTime = null, hintedData = null }) => {
       if (!onHoverChange) return
-      const pointX = param?.point?.x ?? null
       if (!Number.isFinite(pointX) || pointX < 0) {
         lastHoverPayloadRef.current = null
         onHoverChange(null)
         return
       }
-      const logical = chart.timeScale().coordinateToLogical(pointX)
-      const logicalCandle = candleFromLogicalIndex(candleData, logical)
-      const hoveredTime = normalizeChartTime(param?.time)
-      const hoveredData = param?.seriesData?.get(priceSeries)
-      const fallbackCandle = logicalCandle ?? findNearestCandle(candleData, hoveredTime)
-      const rawPreviewPrice = Number.isFinite(param?.point?.y) ? priceSeries.coordinateToPrice(param.point.y) : NaN
-      const previewPrice = Number.isFinite(rawPreviewPrice) ? rawPreviewPrice : (logicalCandle?.close ?? hoveredData?.close ?? fallbackCandle?.close ?? NaN)
+      const resolvedLogical = Number.isFinite(logicalIndex) ? logicalIndex : chart.timeScale().coordinateToLogical(pointX)
+      const logicalCandle = candleFromLogicalIndex(candleData, resolvedLogical)
+      const resolvedHintedTime = normalizeChartTime(hintedTime)
+      const fallbackCandle = logicalCandle ?? findNearestCandle(candleData, resolvedHintedTime)
+      const rawPreviewPrice = Number.isFinite(pointY) ? priceSeries.coordinateToPrice(pointY) : NaN
+      const previewPrice = Number.isFinite(rawPreviewPrice) ? rawPreviewPrice : (logicalCandle?.close ?? hintedData?.close ?? fallbackCandle?.close ?? NaN)
       if (
         selectedToolRef.current === 'Trend'
         && trendDraftRef.current
-        && Number.isFinite(logicalCandle?.time ?? hoveredTime)
+        && Number.isFinite(logicalCandle?.time ?? resolvedHintedTime)
         && Number.isFinite(previewPrice)
       ) {
         previewTrendSeries.applyOptions({
@@ -1028,38 +1030,55 @@ function LightweightChartWorkspace({
         })
         previewTrendSeries.setData([
           { time: trendDraftRef.current.time, value: trendDraftRef.current.price },
-          { time: logicalCandle?.time ?? hoveredTime, value: previewPrice },
+          { time: logicalCandle?.time ?? resolvedHintedTime, value: previewPrice },
         ])
       } else {
         previewTrendSeries.setData([])
       }
-      const candle = logicalCandle ?? hoveredData ?? fallbackCandle
-      const resolvedTime = candle?.time ?? hoveredTime ?? null
+      const candle = logicalCandle ?? hintedData ?? fallbackCandle
+      const resolvedTime = candle?.time ?? resolvedHintedTime ?? null
       if (!candle || !Number.isFinite(resolvedTime)) {
         return
       }
       const nextPayload = {
         time: resolvedTime,
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
+        logicalIndex: Number.isFinite(resolvedLogical) ? resolvedLogical : null,
         x: pointX,
+        open: candle.open ?? logicalCandle?.open ?? fallbackCandle?.open ?? null,
+        high: candle.high ?? logicalCandle?.high ?? fallbackCandle?.high ?? null,
+        low: candle.low ?? logicalCandle?.low ?? fallbackCandle?.low ?? null,
+        close: candle.close ?? logicalCandle?.close ?? fallbackCandle?.close ?? null,
+        sma20: nearestSeriesValueAtTime(sma20Data, resolvedTime),
+        sma50: nearestSeriesValueAtTime(sma50Data, resolvedTime),
+        sma200: nearestSeriesValueAtTime(sma200Data, resolvedTime),
       }
       const previous = lastHoverPayloadRef.current
       if (
         previous
         && previous.time === nextPayload.time
-        && previous.open === nextPayload.open
-        && previous.high === nextPayload.high
-        && previous.low === nextPayload.low
-        && previous.close === nextPayload.close
+        && previous.logicalIndex === nextPayload.logicalIndex
         && previous.x === nextPayload.x
       ) {
         return
       }
       lastHoverPayloadRef.current = nextPayload
       onHoverChange(nextPayload)
+    }
+
+    const handleCrosshairMove = (param) => {
+      if (!param?.point) {
+        lastHoverPayloadRef.current = null
+        previewTrendSeries.setData([])
+        onHoverChange?.(null)
+        return
+      }
+      updateHoverFromPoint({
+        pointX: param?.point?.x ?? null,
+        pointY: param?.point?.y ?? null,
+        logicalIndex: Number.isFinite(param?.logical) ? param.logical : null,
+        hintedTime: param?.time ?? null,
+        hintedData: param?.seriesData?.get(priceSeries) ?? null,
+      })
     }
 
     chart.subscribeCrosshairMove(handleCrosshairMove)
@@ -1319,21 +1338,34 @@ function App() {
   }, [drawSoftness, drawWidth, historyState.points, horizontalLines, levelColor, trendColor, trendDraft, trendLines, verticalColor, verticalLines])
 
   const lastBar = historyState.points[historyState.points.length - 1]
+  const hoveredCandle = useMemo(
+    () => candleFromLogicalIndex(historyState.points, hoveredBar?.logicalIndex),
+    [historyState.points, hoveredBar?.logicalIndex],
+  )
   const stats = useMemo(() => ({
-    open: hoveredBar?.open ?? pickedBar?.open ?? lastBar?.open ?? quoteState.price ?? 0,
-    high: hoveredBar?.high ?? pickedBar?.high ?? lastBar?.high ?? quoteState.price ?? 0,
-    low: hoveredBar?.low ?? pickedBar?.low ?? lastBar?.low ?? quoteState.price ?? 0,
-    close: hoveredBar?.close ?? pickedBar?.close ?? lastBar?.close ?? quoteState.price ?? 0,
+    open: hoveredBar?.open ?? hoveredCandle?.open ?? pickedBar?.open ?? lastBar?.open ?? quoteState.price ?? 0,
+    high: hoveredBar?.high ?? hoveredCandle?.high ?? pickedBar?.high ?? lastBar?.high ?? quoteState.price ?? 0,
+    low: hoveredBar?.low ?? hoveredCandle?.low ?? pickedBar?.low ?? lastBar?.low ?? quoteState.price ?? 0,
+    close: hoveredBar?.close ?? hoveredCandle?.close ?? pickedBar?.close ?? lastBar?.close ?? quoteState.price ?? 0,
     change: Number.isFinite(quoteState.changePercent) ? quoteState.changePercent : 0,
-    time: hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null,
-  }), [hoveredBar, pickedBar, lastBar, quoteState])
+    time: hoveredCandle?.time ?? hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null,
+  }), [hoveredBar, hoveredCandle, pickedBar, lastBar, quoteState])
   const sma20SeriesData = useMemo(() => computeSma(historyState.points, 20), [historyState.points])
   const sma50SeriesData = useMemo(() => computeSma(historyState.points, 50), [historyState.points])
   const sma200SeriesData = useMemo(() => computeProgressiveSma(historyState.points, 200), [historyState.points])
-  const activeSeriesTime = hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null
-  const sma20Value = useMemo(() => nearestSeriesValueAtTime(sma20SeriesData, activeSeriesTime), [activeSeriesTime, sma20SeriesData])
-  const sma50Value = useMemo(() => nearestSeriesValueAtTime(sma50SeriesData, activeSeriesTime), [activeSeriesTime, sma50SeriesData])
-  const sma200Value = useMemo(() => nearestSeriesValueAtTime(sma200SeriesData, activeSeriesTime), [activeSeriesTime, sma200SeriesData])
+  const activeSeriesTime = hoveredCandle?.time ?? hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null
+  const sma20Value = useMemo(
+    () => (Number.isFinite(hoveredBar?.sma20) ? hoveredBar.sma20 : nearestSeriesValueAtTime(sma20SeriesData, activeSeriesTime)),
+    [activeSeriesTime, hoveredBar?.sma20, sma20SeriesData],
+  )
+  const sma50Value = useMemo(
+    () => (Number.isFinite(hoveredBar?.sma50) ? hoveredBar.sma50 : nearestSeriesValueAtTime(sma50SeriesData, activeSeriesTime)),
+    [activeSeriesTime, hoveredBar?.sma50, sma50SeriesData],
+  )
+  const sma200Value = useMemo(
+    () => (Number.isFinite(hoveredBar?.sma200) ? hoveredBar.sma200 : nearestSeriesValueAtTime(sma200SeriesData, activeSeriesTime)),
+    [activeSeriesTime, hoveredBar?.sma200, sma200SeriesData],
+  )
   const resolvedTopAxisTicks = useMemo(
     () => (topAxisTicks.length ? topAxisTicks : buildTopAxisTicks(historyState.points, { from: 0, to: historyState.points.length - 1 })),
     [historyState.points, topAxisTicks],
@@ -1484,9 +1516,6 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="control-row">
-                    <div className="chart-header-note">{toolHint}</div>
-                  </div>
                 </div>
               </div>
 
