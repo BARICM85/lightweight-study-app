@@ -168,6 +168,12 @@ function findNearestCandle(points, rawTime) {
   return nearest
 }
 
+function candleFromLogicalIndex(points, logicalIndex) {
+  if (!points.length || !Number.isFinite(logicalIndex)) return null
+  const index = Math.max(0, Math.min(points.length - 1, Math.round(logicalIndex)))
+  return points[index] ?? null
+}
+
 function sourceLabel(source) {
   if (source === 'zerodha') return 'Zerodha live'
   if (source === 'yahoo') return 'Last trading day'
@@ -618,6 +624,7 @@ function LightweightChartWorkspace({
   const visibleLogicalRangeRef = useRef(null)
   const selectedToolRef = useRef(selectedTool)
   const trendDraftRef = useRef(trendDraft)
+  const lastHoverPayloadRef = useRef(null)
 
   useEffect(() => {
     selectedToolRef.current = selectedTool
@@ -651,7 +658,7 @@ function LightweightChartWorkspace({
       rightPriceScale: {
         borderColor: 'rgba(148,163,184,0.12)',
         scaleMargins: { top: 0.04, bottom: 0.04 },
-        minimumWidth: 82,
+        minimumWidth: 94,
       },
       timeScale: {
         borderColor: 'rgba(148,163,184,0.12)',
@@ -825,12 +832,12 @@ function LightweightChartWorkspace({
         value: point.volume,
         color: point.close >= point.open ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)',
       })))
-      chart.priceScale('right', volumePaneIndex).applyOptions({
-        autoScale: true,
-        scaleMargins: { top: 0.12, bottom: 0 },
-        borderColor: 'rgba(148,163,184,0.12)',
-        minimumWidth: 82,
-      })
+        chart.priceScale('right', volumePaneIndex).applyOptions({
+          autoScale: true,
+          scaleMargins: { top: 0.12, bottom: 0 },
+          borderColor: 'rgba(148,163,184,0.12)',
+          minimumWidth: 94,
+        })
     }
 
     const rsiData = computeRsi(candleData, 14)
@@ -851,7 +858,7 @@ function LightweightChartWorkspace({
         autoScale: false,
         mode: 0,
         scaleMargins: { top: 0.08, bottom: 0.08 },
-        minimumWidth: 82,
+        minimumWidth: 94,
       })
       priceSeries.applyOptions({
         autoscaleInfoProvider: () => ({
@@ -868,7 +875,7 @@ function LightweightChartWorkspace({
         autoScale: false,
         mode: 0,
         scaleMargins: { top: 0.08, bottom: 0.08 },
-        minimumWidth: 82,
+        minimumWidth: 94,
       })
       rsiSeries.createPriceLine({
         price: 70,
@@ -902,7 +909,7 @@ function LightweightChartWorkspace({
       chart.priceScale('right', macdPaneIndex).applyOptions({
         autoScale: true,
         scaleMargins: { top: 0.1, bottom: 0.1 },
-        minimumWidth: 82,
+        minimumWidth: 94,
       })
     }
 
@@ -996,15 +1003,23 @@ function LightweightChartWorkspace({
 
     const handleCrosshairMove = (param) => {
       if (!onHoverChange) return
-      const hoveredData = param?.seriesData?.get(priceSeries)
+      const pointX = param?.point?.x ?? null
+      if (!Number.isFinite(pointX) || pointX < 0) {
+        lastHoverPayloadRef.current = null
+        onHoverChange(null)
+        return
+      }
+      const logical = chart.timeScale().coordinateToLogical(pointX)
+      const logicalCandle = candleFromLogicalIndex(candleData, logical)
       const hoveredTime = normalizeChartTime(param?.time)
-      const fallbackCandle = hoveredData ? null : findNearestCandle(candleData, hoveredTime)
+      const hoveredData = param?.seriesData?.get(priceSeries)
+      const fallbackCandle = logicalCandle ?? findNearestCandle(candleData, hoveredTime)
       const rawPreviewPrice = Number.isFinite(param?.point?.y) ? priceSeries.coordinateToPrice(param.point.y) : NaN
-      const previewPrice = Number.isFinite(rawPreviewPrice) ? rawPreviewPrice : (hoveredData?.close ?? fallbackCandle?.close ?? NaN)
+      const previewPrice = Number.isFinite(rawPreviewPrice) ? rawPreviewPrice : (logicalCandle?.close ?? hoveredData?.close ?? fallbackCandle?.close ?? NaN)
       if (
         selectedToolRef.current === 'Trend'
         && trendDraftRef.current
-        && Number.isFinite(hoveredTime)
+        && Number.isFinite(logicalCandle?.time ?? hoveredTime)
         && Number.isFinite(previewPrice)
       ) {
         previewTrendSeries.applyOptions({
@@ -1013,24 +1028,38 @@ function LightweightChartWorkspace({
         })
         previewTrendSeries.setData([
           { time: trendDraftRef.current.time, value: trendDraftRef.current.price },
-          { time: hoveredTime, value: previewPrice },
+          { time: logicalCandle?.time ?? hoveredTime, value: previewPrice },
         ])
       } else {
         previewTrendSeries.setData([])
       }
-      if ((!hoveredData && !fallbackCandle) || hoveredTime == null) {
-        onHoverChange(null)
+      const candle = logicalCandle ?? hoveredData ?? fallbackCandle
+      const resolvedTime = candle?.time ?? hoveredTime ?? null
+      if (!candle || !Number.isFinite(resolvedTime)) {
         return
       }
-      const candle = hoveredData ?? fallbackCandle
-      onHoverChange({
-        time: hoveredTime,
+      const nextPayload = {
+        time: resolvedTime,
         open: candle.open,
         high: candle.high,
         low: candle.low,
         close: candle.close,
-        x: param?.point?.x ?? null,
-      })
+        x: pointX,
+      }
+      const previous = lastHoverPayloadRef.current
+      if (
+        previous
+        && previous.time === nextPayload.time
+        && previous.open === nextPayload.open
+        && previous.high === nextPayload.high
+        && previous.low === nextPayload.low
+        && previous.close === nextPayload.close
+        && previous.x === nextPayload.x
+      ) {
+        return
+      }
+      lastHoverPayloadRef.current = nextPayload
+      onHoverChange(nextPayload)
     }
 
     chart.subscribeCrosshairMove(handleCrosshairMove)
