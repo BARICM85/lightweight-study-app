@@ -664,6 +664,7 @@ function LightweightChartWorkspace({
         ticksVisible: true,
         minimumHeight: 22,
         tickMarkMaxCharacterLength: 12,
+        rightOffset: 10,
       },
       localization: {
         priceFormatter: (value) => formatPrice(value),
@@ -1624,6 +1625,7 @@ function App() {
               <div className="chart-ohlc-box">
                 <div className="stats-strip floating-stats">
                   <span className="symbol-label">{selectedSymbol.symbol}</span>
+                  <span className="date-chip">{formatChartDate(stats.time)}</span>
                   <span>O {formatPrice(stats.open)}</span>
                   <span>H {formatPrice(stats.high)}</span>
                   <span>L {formatPrice(stats.low)}</span>
