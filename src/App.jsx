@@ -1073,13 +1073,6 @@ function LightweightChartWorkspace({
         pointX,
         Number.isFinite(resolvedLogical) ? resolvedLogical : null,
       )
-      const previous = lastHoverPayloadRef.current
-      if (
-        previous
-        && previous.time === nextPayload.time
-      ) {
-        return
-      }
       lastHoverPayloadRef.current = nextPayload
       setLegendStats(nextPayload)
     }
@@ -1091,12 +1084,33 @@ function LightweightChartWorkspace({
         syncLegendToFallback()
         return
       }
+      const resolvedTime = normalizeChartTime(param?.time)
+      const seriesPoint = param?.seriesPrices?.get?.(priceSeries) ?? param?.seriesData?.get?.(priceSeries) ?? null
+      const crosshairCandle = seriesPoint
+        ? {
+          open: seriesPoint.open,
+          high: seriesPoint.high,
+          low: seriesPoint.low,
+          close: seriesPoint.close,
+          time: resolvedTime,
+        }
+        : findNearestCandle(candleData, resolvedTime)
+      if (crosshairCandle && Number.isFinite(resolvedTime)) {
+        setLegendStats(
+          buildLegendStats(
+            crosshairCandle,
+            resolvedTime,
+            param?.point?.x ?? null,
+            Number.isFinite(param?.logical) ? param.logical : null,
+          ),
+        )
+      }
       updateHoverFromPoint({
         pointX: param?.point?.x ?? null,
         pointY: param?.point?.y ?? null,
         logicalIndex: Number.isFinite(param?.logical) ? param.logical : null,
         hintedTime: param?.time ?? null,
-        hintedData: param?.seriesData?.get(priceSeries) ?? null,
+        hintedData: seriesPoint,
       })
     }
 
