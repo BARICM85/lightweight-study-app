@@ -138,26 +138,11 @@ function resolveTimestamp(value) {
   return NaN
 }
 
-function toIndianSessionOpen(timestampSeconds) {
-  if (!Number.isFinite(timestampSeconds)) return timestampSeconds
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date(timestampSeconds * 1000))
-  const year = Number(parts.find((part) => part.type === 'year')?.value || 0)
-  const month = Number(parts.find((part) => part.type === 'month')?.value || 1)
-  const day = Number(parts.find((part) => part.type === 'day')?.value || 1)
-  return Math.floor(Date.UTC(year, month - 1, day, 3, 45, 0) / 1000)
-}
-
-function normalizeHistory(payload, interval = '1D') {
+function normalizeHistory(payload) {
   const points = Array.isArray(payload?.points) ? payload.points : Array.isArray(payload?.data) ? payload.data : []
   return points
     .map((point) => {
-      const rawTime = resolveTimestamp(point.timestamp ?? point.date ?? point.time)
-      const time = ['1D', '1W', '1M'].includes(interval) ? toIndianSessionOpen(rawTime) : rawTime
+      const time = resolveTimestamp(point.timestamp ?? point.date ?? point.time)
       const open = Number(point.open)
       const close = Number(point.close)
       const rawHigh = Number(point.high)
@@ -271,7 +256,7 @@ export async function fetchMarketHistory(symbol, range = 'YTD', interval = '1D',
     const payload = await requestJson(
       `/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(resolveHistoryRequestRange(range, interval, allowExtendedHistory))}&interval=${encodeURIComponent(INTERVAL_TO_API[interval] || 'day')}`,
     )
-    const points = aggregatePoints(applySessionFilter(normalizeHistory(payload, interval), interval), interval)
+    const points = aggregatePoints(applySessionFilter(normalizeHistory(payload), interval), interval)
     if (!points.length) throw new Error('No history points returned')
     return { source: payload?.source || 'live', points, error: '' }
   } catch (error) {

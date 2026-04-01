@@ -73,6 +73,27 @@ function formatChartDate(rawTime) {
   }).format(new Date(timestampSeconds * 1000))
 }
 
+function formatLegendDate(rawTime, interval = '1D') {
+  const timestampSeconds = normalizeChartTime(rawTime)
+  if (!Number.isFinite(timestampSeconds)) return 'n/a'
+  const options = ['1m', '5m', '15m', '1H', '4H'].includes(interval)
+    ? {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }
+    : {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }
+  return new Intl.DateTimeFormat('en-IN', options).format(new Date(timestampSeconds * 1000))
+}
+
 function formatAxisDate(rawTime) {
   const timestampSeconds = normalizeChartTime(rawTime)
   if (!Number.isFinite(timestampSeconds)) return ''
@@ -91,6 +112,10 @@ function formatNoteTime(rawTime) {
     day: '2-digit',
     month: 'short',
   }).format(new Date(timestampSeconds * 1000))
+}
+
+function isIntradayInterval(interval = '1D') {
+  return ['1m', '5m', '15m', '1H', '4H'].includes(interval)
 }
 
 function withOpacity(hex, alpha = 0.55) {
@@ -696,7 +721,7 @@ function LightweightChartWorkspace({
       timeScale: {
         borderColor: 'rgba(148,163,184,0.12)',
         visible: true,
-        timeVisible: true,
+        timeVisible: isIntradayInterval(interval),
         secondsVisible: false,
         ticksVisible: true,
         minimumHeight: 22,
@@ -705,6 +730,7 @@ function LightweightChartWorkspace({
       },
       localization: {
         priceFormatter: (value) => formatPrice(value),
+        timeFormatter: (time) => formatLegendDate(time, interval),
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -1200,7 +1226,7 @@ function LightweightChartWorkspace({
       <div className="chart-stats-bar chart-stats-bar-inline">
         <div className="stats-strip chart-stats-main">
           <span className="symbol-label">{selectedSymbol.symbol}</span>
-          <span className="date-chip">{formatChartDate(legendStats?.time)}</span>
+          <span className="date-chip">{formatLegendDate(legendStats?.time, interval)}</span>
           <span>O {formatPrice(legendStats?.open)}</span>
           <span>H {formatPrice(legendStats?.high)}</span>
           <span>L {formatPrice(legendStats?.low)}</span>
