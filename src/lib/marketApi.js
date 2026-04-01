@@ -237,9 +237,37 @@ function withinIndianMarketHours(timestampSeconds) {
   return minutes >= (9 * 60 + 15) && minutes <= (15 * 60 + 30)
 }
 
+function intervalStepMinutes(interval) {
+  const map = {
+    '1m': 1,
+    '5m': 5,
+    '15m': 15,
+    '1H': 60,
+    '4H': 240,
+  }
+  return map[interval] || null
+}
+
 function applySessionFilter(points, interval) {
   if (!['1m', '5m', '15m', '1H', '4H'].includes(interval)) return points
-  return points.filter((point) => withinIndianMarketHours(point.time))
+  const stepMinutes = intervalStepMinutes(interval)
+  return points.filter((point) => {
+    if (!withinIndianMarketHours(point.time)) return false
+
+    const date = new Date(point.time * 1000)
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    const [hourText, minuteText] = formatter.format(date).split(':')
+    const minutes = (Number(hourText) * 60) + Number(minuteText)
+    const minutesSinceOpen = minutes - (9 * 60 + 15)
+
+    if (!Number.isFinite(stepMinutes)) return true
+    return minutesSinceOpen >= 0 && (minutesSinceOpen % stepMinutes) === 0
+  })
 }
 
 export async function fetchBrokerStatus() {
