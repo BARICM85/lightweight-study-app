@@ -181,6 +181,36 @@ function sourceLabel(source) {
   return 'Live market'
 }
 
+function isNseMarketLiveNow() {
+  const now = new Date()
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(now)
+
+  const weekday = parts.find((part) => part.type === 'weekday')?.value || ''
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0)
+  const minutes = (hour * 60) + minute
+  const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
+
+  return isWeekday && minutes >= (9 * 60 + 15) && minutes <= (15 * 60 + 30)
+}
+
+function chartFeedLabel({ brokerConnected, quoteSource, historySource }) {
+  const marketLive = isNseMarketLiveNow()
+  if (marketLive && brokerConnected && quoteSource !== 'fallback') {
+    return 'Live market'
+  }
+  if (historySource === 'fallback' && quoteSource === 'fallback') {
+    return 'Fallback feed'
+  }
+  return 'Last trading day'
+}
+
 function average(values) {
   if (!values.length) return 0
   return values.reduce((sum, value) => sum + value, 0) / values.length
@@ -1415,7 +1445,13 @@ function App() {
           <span className={`badge ${brokerStatus.connected ? 'good' : 'warn'}`}>
             {brokerStatus.connected ? 'ZERODHA CONNECTED' : 'ZERODHA STANDBY'}
           </span>
-          <span className="badge neutral">{sourceLabel(historyState.source)}</span>
+          <span className="badge neutral">
+            {chartFeedLabel({
+              brokerConnected: brokerStatus.connected,
+              quoteSource: quoteState.source,
+              historySource: historyState.source,
+            })}
+          </span>
         </div>
       </header>
 

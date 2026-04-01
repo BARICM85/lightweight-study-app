@@ -234,7 +234,7 @@ function withinIndianMarketHours(timestampSeconds) {
   })
   const [hourText, minuteText] = formatter.format(date).split(':')
   const minutes = (Number(hourText) * 60) + Number(minuteText)
-  return minutes >= (9 * 60) && minutes <= (15 * 60 + 30)
+  return minutes >= (9 * 60 + 15) && minutes <= (15 * 60 + 30)
 }
 
 function applySessionFilter(points, interval) {
