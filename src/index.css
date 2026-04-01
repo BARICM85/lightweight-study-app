@@ -468,20 +468,6 @@ button { cursor: pointer; }
   padding: 0 2px 2px;
 }
 
-.floating-stats {
-  margin-top: 0;
-  gap: 5px;
-  font-size: 10px;
-  line-height: 1;
-}
-
-.floating-ma-row {
-  margin-top: 0;
-  gap: 10px;
-  font-size: 10px;
-  line-height: 1;
-}
-
 .ma-inline {
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -561,26 +547,12 @@ button { cursor: pointer; }
   position: relative;
 }
 
-.chart-top-left,
-.chart-top-right {
-  position: absolute;
-  top: 6px;
-  z-index: 10;
-  pointer-events: none;
-}
-
-.chart-top-left {
-  left: 8px;
-  max-width: min(50%, 440px);
-}
-
-.chart-top-right {
-  right: 12px;
-}
-
-.chart-indicator-strip,
-.chart-ohlc-box {
-  pointer-events: auto;
+.chart-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 2px 4px;
 }
 
 .chart-indicator-strip {
@@ -588,6 +560,7 @@ button { cursor: pointer; }
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
 
 .indicator-chip {
@@ -625,7 +598,7 @@ button { cursor: pointer; }
   color: #cbd5e1;
 }
 
-.chart-ohlc-box {
+.chart-stats-bar {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -636,12 +609,23 @@ button { cursor: pointer; }
   background: rgba(11,17,27,0.84);
   box-shadow: 0 8px 24px rgba(0,0,0,0.18);
   min-width: 340px;
+  max-width: 100%;
 }
 
-.indicator-status-line {
+.chart-stats-main {
+  margin-top: 0;
+  gap: 5px;
   font-size: 10px;
-  color: #94a3b8;
-  text-align: right;
+  line-height: 1;
+  justify-content: flex-end;
+}
+
+.chart-stats-ma {
+  margin-top: 0;
+  gap: 10px;
+  font-size: 10px;
+  line-height: 1;
+  justify-content: flex-end;
 }
 
 .lw-layout {
@@ -651,7 +635,7 @@ button { cursor: pointer; }
 
 .lw-chart-shell {
   position: relative;
-  padding-top: 42px;
+  padding-top: 0;
 }
 
 .lw-pane {
@@ -736,14 +720,6 @@ button { cursor: pointer; }
   pointer-events: none;
 }
 
-.chart-cursor-pill {
-  top: 44px;
-  background: rgba(8,12,18,0.98);
-  color: #f8fafc;
-  border: 1px solid rgba(255,255,255,0.16);
-  z-index: 8;
-}
-
 .range-toggle {
   display: inline-flex;
   align-items: center;
@@ -768,6 +744,23 @@ button { cursor: pointer; }
   display: grid;
   place-items: center;
   background: rgba(2,6,12,0.72);
+}
+
+@media (max-width: 1080px) {
+  .chart-card-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chart-stats-bar {
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  .chart-stats-main,
+  .chart-stats-ma {
+    justify-content: flex-start;
+  }
 }
 
 .indicator-modal {

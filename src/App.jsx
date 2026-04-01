@@ -606,7 +606,6 @@ function LightweightChartWorkspace({
   priceZoom,
   crosshairWidth,
   interval,
-  onHoverChange,
   onAxisChange,
   selectedTool,
   trendColor,
@@ -618,6 +617,9 @@ function LightweightChartWorkspace({
   verticalLines,
   selectedDrawing,
   onChartAction,
+  selectedSymbol,
+  quoteChangePercent,
+  pickedBar,
 }) {
   const chartRef = useRef(null)
   const overlayRef = useRef(null)
@@ -625,6 +627,7 @@ function LightweightChartWorkspace({
   const selectedToolRef = useRef(selectedTool)
   const trendDraftRef = useRef(trendDraft)
   const lastHoverPayloadRef = useRef(null)
+  const [legendStats, setLegendStats] = useState(null)
 
   useEffect(() => {
     selectedToolRef.current = selectedTool
@@ -819,6 +822,7 @@ function LightweightChartWorkspace({
       low: point.low,
       close: point.close,
     }))
+    const latestCandle = candleData[candleData.length - 1] ?? null
 
     const sma20Data = computeSma(candleData, 20)
     const sma50Data = computeSma(candleData, 50)
@@ -1005,11 +1009,34 @@ function LightweightChartWorkspace({
       syncOverlayBoxes()
     }
 
+    const buildLegendStats = (candle, resolvedTime, pointX = null, logicalIndex = null) => ({
+      symbol: selectedSymbol.symbol,
+      time: resolvedTime,
+      logicalIndex,
+      x: pointX,
+      open: candle?.open ?? 0,
+      high: candle?.high ?? 0,
+      low: candle?.low ?? 0,
+      close: candle?.close ?? 0,
+      sma20: nearestSeriesValueAtTime(sma20Data, resolvedTime),
+      sma50: nearestSeriesValueAtTime(sma50Data, resolvedTime),
+      sma200: nearestSeriesValueAtTime(sma200Data, resolvedTime),
+      change: Number.isFinite(quoteChangePercent) ? quoteChangePercent : 0,
+    })
+
+    const syncLegendToFallback = () => {
+      const base = pickedBar ?? latestCandle
+      const baseTime = base?.time ?? null
+      if (!base || !Number.isFinite(baseTime)) return
+      setLegendStats(buildLegendStats(base, baseTime))
+    }
+
+    syncLegendToFallback()
+
     const updateHoverFromPoint = ({ pointX, pointY, logicalIndex = null, hintedTime = null, hintedData = null }) => {
-      if (!onHoverChange) return
       if (!Number.isFinite(pointX) || pointX < 0) {
         lastHoverPayloadRef.current = null
-        onHoverChange(null)
+        syncLegendToFallback()
         return
       }
       const resolvedLogical = Number.isFinite(logicalIndex) ? logicalIndex : chart.timeScale().coordinateToLogical(pointX)
@@ -1040,36 +1067,28 @@ function LightweightChartWorkspace({
       if (!candle || !Number.isFinite(resolvedTime)) {
         return
       }
-      const nextPayload = {
-        time: resolvedTime,
-        logicalIndex: Number.isFinite(resolvedLogical) ? resolvedLogical : null,
-        x: pointX,
-        open: candle.open ?? logicalCandle?.open ?? fallbackCandle?.open ?? null,
-        high: candle.high ?? logicalCandle?.high ?? fallbackCandle?.high ?? null,
-        low: candle.low ?? logicalCandle?.low ?? fallbackCandle?.low ?? null,
-        close: candle.close ?? logicalCandle?.close ?? fallbackCandle?.close ?? null,
-        sma20: nearestSeriesValueAtTime(sma20Data, resolvedTime),
-        sma50: nearestSeriesValueAtTime(sma50Data, resolvedTime),
-        sma200: nearestSeriesValueAtTime(sma200Data, resolvedTime),
-      }
+      const nextPayload = buildLegendStats(
+        candle,
+        resolvedTime,
+        pointX,
+        Number.isFinite(resolvedLogical) ? resolvedLogical : null,
+      )
       const previous = lastHoverPayloadRef.current
       if (
         previous
         && previous.time === nextPayload.time
-        && previous.logicalIndex === nextPayload.logicalIndex
-        && previous.x === nextPayload.x
       ) {
         return
       }
       lastHoverPayloadRef.current = nextPayload
-      onHoverChange(nextPayload)
+      setLegendStats(nextPayload)
     }
 
     const handleCrosshairMove = (param) => {
       if (!param?.point) {
         lastHoverPayloadRef.current = null
         previewTrendSeries.setData([])
-        onHoverChange?.(null)
+        syncLegendToFallback()
         return
       }
       updateHoverFromPoint({
@@ -1130,10 +1149,26 @@ function LightweightChartWorkspace({
       }
       chart.remove()
     }
-  }, [chartType, crosshairWidth, drawSoftness, drawWidth, horizontalLines, interval, macdVisible, onAxisChange, onChartAction, onHoverChange, points, priceZoom, rsiVisible, selectedDrawing, trendColor, trendDraft, trendLines, verticalLines, volumeVisible])
+  }, [chartType, crosshairWidth, drawSoftness, drawWidth, horizontalLines, interval, macdVisible, onAxisChange, onChartAction, pickedBar, points, priceZoom, quoteChangePercent, rsiVisible, selectedDrawing, selectedSymbol.symbol, trendColor, trendDraft, trendLines, verticalLines, volumeVisible])
 
   return (
     <div className="lw-layout">
+      <div className="chart-stats-bar chart-stats-bar-inline">
+        <div className="stats-strip chart-stats-main">
+          <span className="symbol-label">{selectedSymbol.symbol}</span>
+          <span className="date-chip">{formatChartDate(legendStats?.time)}</span>
+          <span>O {formatPrice(legendStats?.open)}</span>
+          <span>H {formatPrice(legendStats?.high)}</span>
+          <span>L {formatPrice(legendStats?.low)}</span>
+          <span>C {formatPrice(legendStats?.close)}</span>
+          <span className={(legendStats?.change ?? 0) >= 0 ? 'up' : 'down'}>{formatPercent(legendStats?.change ?? 0)}</span>
+        </div>
+        <div className="stats-strip chart-stats-ma">
+          <span className="ma-inline ma20">S20 {formatMaybePrice(legendStats?.sma20)}</span>
+          <span className="ma-inline ma50">S50 {formatMaybePrice(legendStats?.sma50)}</span>
+          <span className="ma-inline ma200">S200 {formatMaybePrice(legendStats?.sma200)}</span>
+        </div>
+      </div>
       <div className="lw-chart-shell">
         <div ref={chartRef} className="lw-pane lw-price-pane" />
         <div ref={overlayRef} className="chart-overlay-layer" />
@@ -1166,7 +1201,6 @@ function App() {
   const [rsiVisible, setRsiVisible] = useState(true)
   const [macdVisible, setMacdVisible] = useState(true)
   const [priceZoom, setPriceZoom] = useState(1)
-  const [hoveredBar, setHoveredBar] = useState(null)
   const [topAxisTicks, setTopAxisTicks] = useState([])
   const [trendColor, setTrendColor] = useState('#22c55e')
   const [levelColor, setLevelColor] = useState('#f87171')
@@ -1337,45 +1371,10 @@ function App() {
 
   }, [drawSoftness, drawWidth, historyState.points, horizontalLines, levelColor, trendColor, trendDraft, trendLines, verticalColor, verticalLines])
 
-  const lastBar = historyState.points[historyState.points.length - 1]
-  const hoveredCandle = useMemo(
-    () => candleFromLogicalIndex(historyState.points, hoveredBar?.logicalIndex),
-    [historyState.points, hoveredBar?.logicalIndex],
-  )
-  const stats = useMemo(() => ({
-    open: hoveredBar?.open ?? hoveredCandle?.open ?? pickedBar?.open ?? lastBar?.open ?? quoteState.price ?? 0,
-    high: hoveredBar?.high ?? hoveredCandle?.high ?? pickedBar?.high ?? lastBar?.high ?? quoteState.price ?? 0,
-    low: hoveredBar?.low ?? hoveredCandle?.low ?? pickedBar?.low ?? lastBar?.low ?? quoteState.price ?? 0,
-    close: hoveredBar?.close ?? hoveredCandle?.close ?? pickedBar?.close ?? lastBar?.close ?? quoteState.price ?? 0,
-    change: Number.isFinite(quoteState.changePercent) ? quoteState.changePercent : 0,
-    time: hoveredCandle?.time ?? hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null,
-  }), [hoveredBar, hoveredCandle, pickedBar, lastBar, quoteState])
-  const sma20SeriesData = useMemo(() => computeSma(historyState.points, 20), [historyState.points])
-  const sma50SeriesData = useMemo(() => computeSma(historyState.points, 50), [historyState.points])
-  const sma200SeriesData = useMemo(() => computeProgressiveSma(historyState.points, 200), [historyState.points])
-  const activeSeriesTime = hoveredCandle?.time ?? hoveredBar?.time ?? pickedBar?.time ?? lastBar?.time ?? null
-  const sma20Value = useMemo(
-    () => (Number.isFinite(hoveredBar?.sma20) ? hoveredBar.sma20 : nearestSeriesValueAtTime(sma20SeriesData, activeSeriesTime)),
-    [activeSeriesTime, hoveredBar?.sma20, sma20SeriesData],
-  )
-  const sma50Value = useMemo(
-    () => (Number.isFinite(hoveredBar?.sma50) ? hoveredBar.sma50 : nearestSeriesValueAtTime(sma50SeriesData, activeSeriesTime)),
-    [activeSeriesTime, hoveredBar?.sma50, sma50SeriesData],
-  )
-  const sma200Value = useMemo(
-    () => (Number.isFinite(hoveredBar?.sma200) ? hoveredBar.sma200 : nearestSeriesValueAtTime(sma200SeriesData, activeSeriesTime)),
-    [activeSeriesTime, hoveredBar?.sma200, sma200SeriesData],
-  )
   const resolvedTopAxisTicks = useMemo(
     () => (topAxisTicks.length ? topAxisTicks : buildTopAxisTicks(historyState.points, { from: 0, to: historyState.points.length - 1 })),
     [historyState.points, topAxisTicks],
   )
-  const cursorAxisStyle = useMemo(() => {
-    if (!Number.isFinite(hoveredBar?.x)) return null
-    return {
-      left: `clamp(56px, ${hoveredBar.x}px, calc(100% - 56px))`,
-    }
-  }, [hoveredBar])
   const toolHint = useMemo(() => {
     if (selectedTool === 'Trend' && trendDraft) {
       return 'Trend start locked. Click a second candle to complete the line.'
@@ -1525,7 +1524,7 @@ function App() {
                     <strong>{selectedSymbol.symbol}</strong>
                     <span>{selectedSymbol.name}</span>
                     <span>{formatPrice(quoteState.price)} INR</span>
-                    <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
+                    <span className={quoteState.changePercent >= 0 ? 'up' : 'down'}>{formatPercent(quoteState.changePercent)}</span>
                   </div>
                   <div className="tool-inline-bar tool-inline-right tool-inline-secondary">
                     <div className="tool-inline-group tool-inline-colors">
@@ -1596,9 +1595,9 @@ function App() {
           </section>
 
           <section className="chart-card">
-              <div className="chart-top-left">
-                <div className="chart-indicator-strip">
-                  <button type="button" className={`indicator-chip ${volumeVisible ? 'active' : ''}`} onClick={() => setVolumeVisible((value) => !value)}>
+            <div className="chart-card-head">
+              <div className="chart-indicator-strip">
+                <button type="button" className={`indicator-chip ${volumeVisible ? 'active' : ''}`} onClick={() => setVolumeVisible((value) => !value)}>
                   <span>VOL</span>
                   {volumeVisible ? <Eye size={13} /> : <EyeOff size={13} />}
                 </button>
@@ -1606,57 +1605,36 @@ function App() {
                   <span>RSI 14</span>
                   {rsiVisible ? <Eye size={13} /> : <EyeOff size={13} />}
                 </button>
-                  <button type="button" className={`indicator-chip ${macdVisible ? 'active' : ''}`} onClick={() => setMacdVisible((value) => !value)}>
-                    <span>MACD</span>
-                    {macdVisible ? <Eye size={13} /> : <EyeOff size={13} />}
-                  </button>
-                </div>
-              </div>
-              <div className="chart-top-right">
-              <div className="chart-ohlc-box">
-                <div className="stats-strip floating-stats">
-                  <span className="symbol-label">{selectedSymbol.symbol}</span>
-                  <span className="date-chip">{formatChartDate(stats.time)}</span>
-                  <span>O {formatPrice(stats.open)}</span>
-                  <span>H {formatPrice(stats.high)}</span>
-                  <span>L {formatPrice(stats.low)}</span>
-                  <span>C {formatPrice(stats.close)}</span>
-                  <span className={stats.change >= 0 ? 'up' : 'down'}>{formatPercent(stats.change)}</span>
-                </div>
-                <div className="stats-strip floating-ma-row">
-                  <span className="ma-inline ma20">S20 {formatMaybePrice(sma20Value)}</span>
-                  <span className="ma-inline ma50">S50 {formatMaybePrice(sma50Value)}</span>
-                  <span className="ma-inline ma200">S200 {formatMaybePrice(sma200Value)}</span>
-                </div>
+                <button type="button" className={`indicator-chip ${macdVisible ? 'active' : ''}`} onClick={() => setMacdVisible((value) => !value)}>
+                  <span>MACD</span>
+                  {macdVisible ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
               </div>
             </div>
-              <LightweightChartWorkspace
-                points={historyState.points}
-                chartType={chartType}
+            <LightweightChartWorkspace
+              points={historyState.points}
+              chartType={chartType}
               volumeVisible={volumeVisible}
               rsiVisible={rsiVisible}
               macdVisible={macdVisible}
               priceZoom={priceZoom}
               crosshairWidth={crosshairWidth}
               interval={interval}
-              onHoverChange={setHoveredBar}
-                onAxisChange={setTopAxisTicks}
-                selectedTool={selectedTool}
-                trendColor={trendColor}
-                drawWidth={drawWidth}
-                drawSoftness={drawSoftness}
-                trendLines={trendLines}
-                trendDraft={trendDraft}
-                horizontalLines={horizontalLines}
-                verticalLines={verticalLines}
+              onAxisChange={setTopAxisTicks}
+              selectedTool={selectedTool}
+              trendColor={trendColor}
+              drawWidth={drawWidth}
+              drawSoftness={drawSoftness}
+              trendLines={trendLines}
+              trendDraft={trendDraft}
+              horizontalLines={horizontalLines}
+              verticalLines={verticalLines}
               selectedDrawing={selectedDrawing}
               onChartAction={handleChartAction}
+              selectedSymbol={selectedSymbol}
+              quoteChangePercent={quoteState.changePercent}
+              pickedBar={pickedBar}
             />
-            {cursorAxisStyle ? (
-              <div className="cursor-date-pill chart-cursor-pill" style={cursorAxisStyle}>
-                {formatChartDate(stats.time)}
-              </div>
-            ) : null}
           </section>
         </main>
       </section>
